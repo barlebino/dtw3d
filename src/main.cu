@@ -147,6 +147,38 @@ void printFloatVolume(struct FloatVolume *fv) {
   }
 }
 
+void setDiffVolumeSerial(struct FloatVolume *fv, struct Picture *picture1,
+  struct Picture *picture2) {
+  unsigned i, j, k;
+  struct Color *p1c, *p2c;
+
+  // If pictures have differing dimensions, then quit
+  if(picture1->width != picture2->width ||
+    picture2->height != picture2->height) {
+    printf("Pictures have different dimensions. Exiting setDiffVolmeSerial\n");
+    return;
+  }
+
+  fv->height = picture1->height;
+  fv->width = picture1->width;
+  fv->depth = picture1->width;
+
+  for(i = 0; i < fv->height; i++) {
+    for(j = 0; j < fv->width; j++) {
+      for(k = 0; k < fv->depth; k++) {
+        // Get the index of the pixel of the first picture
+        p1c = picture1->colors + toIndex2D(i, j, picture1->width);
+        // Get the index of the pixel of the second picture
+        p2c = picture2->colors + toIndex2D(i, k, picture2->width);
+
+        // Insert the distance between these two colors into the float volume
+        *(fv->contents + toIndex3D(i, j, fv->width, k, fv->depth)) =
+          diffColor(p1c, p2c);
+      }
+    }
+  }
+}
+
 int main() {
   struct Picture picture1, picture2, picture3;
   struct Color color1, color2;
@@ -200,6 +232,14 @@ int main() {
   printFloatVolume(&fv);
   printf("\n");
 
+  setDiffVolumeSerial(&fv, &picture1, &picture2);
+
+  printf("--- diff volume ---\n");
+  printFloatVolume(&fv);
+  printf("\n");
+
   printf("Hello world!\n");
+
+  // Create the difference matrix of picture1 x picture2
 }
 
