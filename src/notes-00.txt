@@ -1,0 +1,21 @@
+MATRIX_DIM_X : width of the cost matrix
+MATRIX_DIM_Y : height of the cost matrix
+THREAD_LOAD_DIM : dimension of the thread load, where
+  the thread load is the number of matrix locations each thread will work on
+  the width is the same as the height
+BLOCK_LOAD_DIM : dimension of the block load, where
+  the block load is the number of matrix locations each block will work on
+  the width is the same as the height
+GRID_DIM_X : width of the grid
+GRID_DIM_Y : height of the grid
+
+BLOCK_LOAD_DIM = THREAD_LOAD_DIM * 32
+// 32 because 1024 is the max number of threads per block
+
+GRID_DIM_X = MATRIX_DIM_X / BLOCK_LOAD_DIM +
+  ((MATRIX_DIM_X % BLOCK_LOAD_DIM) > 0)
+GRID_DIM_Y = MATRIX_DIM_Y / BLOCK_LOAD_DIM +
+  ((MATRIX_DIM_Y % BLOCK_LOAD_DIM) > 0)
+
+// Loop for each block
+
