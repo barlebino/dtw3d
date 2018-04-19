@@ -52,10 +52,6 @@ void setRandomPicture(struct Picture *picture, unsigned width,
   }
 }
 
-/* void printColor(struct Color *color) {
-  printf("[%f, %f, %f, %f]\n", color->r, color->g, color->b, color->a);
-} */
-
 void printPicture(struct Picture *picture) {
   unsigned i, j;
   float *currentColor;
@@ -73,35 +69,6 @@ void printPicture(struct Picture *picture) {
     }
   }
 }
-
-/* // Returns 0 if equal pictures, 1 otherwise
-int comparePictures(struct Picture *picture1, struct Picture *picture2) {
-  unsigned i, j;
-  struct Color *currentColor1, *currentColor2;
-
-  // Dimension comparison
-  if(picture1->width != picture2->width ||
-    picture1->height != picture2->height) {
-    return 1;
-  }
-
-  // Color comparison
-  for(i = 0; i < picture1->height; i++) {
-    for(j = 0; j < picture1->width; j++) {
-      currentColor1 = picture1->colors + i * picture1->width + j;
-      currentColor2 = picture2->colors + i * picture1->width + j;
-
-      if(currentColor1->r != currentColor2->r ||
-        currentColor1->g != currentColor2->g ||
-        currentColor1->b != currentColor2->b ||
-        currentColor1->a != currentColor2->a) {
-        return 1;
-      }
-    }
-  }
-  
-  return 0;
-} */
 
 void setEmptyFloatVolume(struct FloatVolume *fv, unsigned width,
   unsigned height, unsigned depth) {
@@ -186,6 +153,7 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   // Memory locations of float arrays on the GPU
   float *d_fv, *d_picture1, *d_picture2;
   int fvDataLen;
+  unsigned num_blocks;
   
   // If pictures have differing dimensions, then quit
   if(picture1->width != picture2->width ||
@@ -215,15 +183,23 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   // Params: destination, source, size of data to be copied, operation
   cudaMemcpy(d_picture1, picture1->colors,
     picture1->width * picture1->height * 4 * sizeof(float),
-    cudaMemcpyHostToDevice
-  );
+    cudaMemcpyHostToDevice);
   cudaMemcpy(d_picture2, picture2->colors,
     picture1->width * picture1->height * 4 * sizeof(float),
-    cudaMemcpyHostToDevice
-  );
+    cudaMemcpyHostToDevice);
 
   // Kernel stuff
+  // 1000 threads per block
+  // So get 10 x 10 subset of each picture, with 4 colors each
   
+  // Get the number of blocks this program will use
+  // TODO : Assume that the maximum number of blocks in unlimited
+  num_blocks = (fv->height / 10 + (fv->height % 10)) *
+    (fv->width / 10 + (fv->width % 10)) *
+    (fv->depth / 10 + (fv->depth % 10));
+
+  dim3 dimGrid(num_blocks);
+  dim3 dimBlock(1000);
 
   // Clear memory
   cudaFree(d_fv);
