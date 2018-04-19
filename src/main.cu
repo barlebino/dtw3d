@@ -79,7 +79,7 @@ void printPicture(struct Picture *picture) {
       currentColor = picture->colors + i * picture->width + j;
 
       printf("(%u, %u): [%f, %f, %f, %f]\n",
-        j, i, currentColor->r, currentColor->g, currentColor->b,
+        i, j, currentColor->r, currentColor->g, currentColor->b,
         currentColor-> a);
     }
   }
@@ -163,6 +163,9 @@ void setDiffVolumeSerial(struct FloatVolume *fv, struct Picture *picture1,
   fv->width = picture1->width;
   fv->depth = picture1->width;
 
+  fv->contents = (float *) malloc(sizeof(float) * fv->height * fv->width *
+    fv->depth);
+
   for(i = 0; i < fv->height; i++) {
     for(j = 0; j < fv->width; j++) {
       for(k = 0; k < fv->depth; k++) {
@@ -179,16 +182,46 @@ void setDiffVolumeSerial(struct FloatVolume *fv, struct Picture *picture1,
   }
 }
 
+void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
+  struct Picture *picture2) {
+  // Memory locations of float arrays on the GPU
+  float *d_fv, *d_picture1, *d_picture2;
+  int fvDataLen;
+  
+  // If pictures have differing dimensions, then quit
+  if(picture1->width != picture2->width ||
+    picture2->height != picture2->height) {
+    printf("Pictures have different dimensions. Exiting setDiffVolmeSerial\n");
+    return;
+  }
+
+  // Create the FloatVolume
+  fv->height = picture1->height;
+  fv->width = picture1->width;
+  fv->depth = picture1->width;
+  
+  fvDataLen = fv->height * fv->width * fv->depth;
+
+  fv->contents = (float *) malloc(sizeof(float) * fvDataLen);
+
+  // Allocate space on the GPU
+  cudaMalloc((void **) &d_fv, fvDataLen * sizeof(float) * 4);
+  cudaMalloc((void **) &d_picture1, picture1->width * picture1->height *
+    sizeof(float) * 4);
+  cudaMalloc((void **) &d_picture2, picture1->width * picture1->height *
+    sizeof(float) * 4);
+
+  // Give the pictures to the GPU
+}
+
 int main() {
-  struct Picture picture1, picture2, picture3;
-  struct Color color1, color2;
-  struct FloatVolume fv;
+  struct Picture picture1, picture2;
+  struct FloatVolume dv;
 
   srand(time(NULL));
 
-  setRandomPicture(&picture1, 3, 3);
-  setRandomPicture(&picture2, 3, 3);
-  setRandomPicture(&picture3, 2, 3);
+  setRandomPicture(&picture1, 2, 2);
+  setRandomPicture(&picture2, 2, 2);
 
   printf("--- picture1 ---\n");
   printPicture(&picture1);
@@ -198,48 +231,10 @@ int main() {
   printPicture(&picture2);
   printf("\n");
 
-  printf("--- picture3 ---\n");
-  printPicture(&picture3);
-  printf("\n");
-
-  printf("--- picture1 vs picture1 ---\n");
-  printf("%d\n\n", comparePictures(&picture1, &picture1));
-
-  printf("--- picture1 vs picture2 ---\n");
-  printf("%d\n\n", comparePictures(&picture1, &picture2));
-
-  printf("--- picture1 vs picture3 ---\n");
-  printf("%d\n\n", comparePictures(&picture1, &picture3));
-
-  setRandomColor(&color1);
-  setRandomColor(&color2);
-
-  printf("--- color1 ---\n");
-  printColor(&color1);
-  printf("\n");
-
-  printf("--- color2 ---\n");
-  printColor(&color2);
-  printf("\n");
-
-  printf("--- color1 vs color2 ---\n");
-  printf("%f\n", diffColor(&color1, &color2));
-  printf("\n");
-
-  setEmptyFloatVolume(&fv, 3, 3, 2);
-
-  printf("--- float volume ---\n");
-  printFloatVolume(&fv);
-  printf("\n");
-
-  setDiffVolumeSerial(&fv, &picture1, &picture2);
+  setDiffVolumeSerial(&dv, &picture1, &picture2);
 
   printf("--- diff volume ---\n");
-  printFloatVolume(&fv);
+  printFloatVolume(&dv);
   printf("\n");
-
-  printf("Hello world!\n");
-
-  // Create the difference matrix of picture1 x picture2
 }
 
