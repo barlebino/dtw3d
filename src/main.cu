@@ -5,15 +5,11 @@
 // For square root
 #include <math.h>
 
-// All members are in [0, 255]
-struct Color {
-  float r, g, b, a;
-};
-
 // Color at index 0 is top left, at index 0 is top left + 1 to the right
+// All colors are in [0, 255]
 struct Picture {
   unsigned width, height;
-  struct Color *colors;
+  float *colors;
 };
 
 // index = y * width * depth + x * depth + z
@@ -31,61 +27,54 @@ unsigned toIndex3D(unsigned a, unsigned b, unsigned blen, unsigned c,
   return a * blen * clen + b * clen + c;
 }
 
-float diffColor(struct Color *color1, struct Color *color2) {
-  return sqrt(powf(color1->r - color2->r, 2.f) +
-    powf(color1->g - color2->g, 2.f) +
-    powf(color1->b - color2->b, 2.f) +
-    powf(color1->a - color2->a, 2.f));
-}
-
-void setRandomColor(struct Color *color) {
-  color->r = (float) (rand() % 256);
-  color->g = (float) (rand() % 256);
-  color->b = (float) (rand() % 256);
-  color->a = (float) (rand() % 256);
-}
-
 // Sets the picture at location "picture" into a random picture of dimensions
 // width and height
 void setRandomPicture(struct Picture *picture, unsigned width,
   unsigned height) {
   unsigned i, j;
-  struct Color *currentColor;
+  float *currentColor;
 
   picture->width = width;
   picture->height = height;
   
-  picture->colors = (struct Color *) malloc(sizeof(struct Color) *
-    picture->width * picture->height);
+  picture->colors = (float *) malloc(sizeof(float) *
+    picture->width * picture->height * 4);
 
   for(i = 0; i < height; i++) {
     for(j = 0; j < width; j++) {
-      currentColor = picture->colors + i * width + j;
-      setRandomColor(currentColor);
+      currentColor = picture->colors + (i * width + j) * 4;
+      
+      *(currentColor + 0) = (float) (rand() % 256);
+      *(currentColor + 1) = (float) (rand() % 256);
+      *(currentColor + 2) = (float) (rand() % 256);
+      *(currentColor + 3) = (float) (rand() % 256);
     }
   }
 }
 
-void printColor(struct Color *color) {
+/* void printColor(struct Color *color) {
   printf("[%f, %f, %f, %f]\n", color->r, color->g, color->b, color->a);
-}
+} */
 
 void printPicture(struct Picture *picture) {
   unsigned i, j;
-  struct Color *currentColor;
+  float *currentColor;
 
   for(i = 0; i < picture->height; i++) {
     for(j = 0; j < picture->width; j++) {
-      currentColor = picture->colors + i * picture->width + j;
+      currentColor = picture->colors + (i * picture->width + j) * 4;
 
-      printf("(%u, %u): [%f, %f, %f, %f]\n",
-        i, j, currentColor->r, currentColor->g, currentColor->b,
-        currentColor-> a);
+      printf("(%u, %u): [%f, %f, %f, %f]\n", i, j, 
+        *(currentColor + 0),
+        *(currentColor + 1), 
+        *(currentColor + 2),
+        *(currentColor + 3)
+      );
     }
   }
 }
 
-// Returns 0 if equal pictures, 1 otherwise
+/* // Returns 0 if equal pictures, 1 otherwise
 int comparePictures(struct Picture *picture1, struct Picture *picture2) {
   unsigned i, j;
   struct Color *currentColor1, *currentColor2;
@@ -112,7 +101,7 @@ int comparePictures(struct Picture *picture1, struct Picture *picture2) {
   }
   
   return 0;
-}
+} */
 
 void setEmptyFloatVolume(struct FloatVolume *fv, unsigned width,
   unsigned height, unsigned depth) {
@@ -147,10 +136,20 @@ void printFloatVolume(struct FloatVolume *fv) {
   }
 }
 
+// Given two colors, determine differentce
+float diffColor(float *c1, float *c2) {
+  return sqrtf(
+    powf(*(c1 + 0) - *(c2 + 0), 2.f) +
+    powf(*(c1 + 1) - *(c2 + 1), 2.f) +
+    powf(*(c1 + 2) - *(c2 + 2), 2.f) +
+    powf(*(c1 + 3) - *(c2 + 3), 2.f)
+  );
+}
+
 void setDiffVolumeSerial(struct FloatVolume *fv, struct Picture *picture1,
   struct Picture *picture2) {
   unsigned i, j, k;
-  struct Color *p1c, *p2c;
+  float *p1c, *p2c;
 
   // If pictures have differing dimensions, then quit
   if(picture1->width != picture2->width ||
@@ -170,9 +169,9 @@ void setDiffVolumeSerial(struct FloatVolume *fv, struct Picture *picture1,
     for(j = 0; j < fv->width; j++) {
       for(k = 0; k < fv->depth; k++) {
         // Get the index of the pixel of the first picture
-        p1c = picture1->colors + toIndex2D(i, j, picture1->width);
+        p1c = picture1->colors + toIndex2D(i, j, picture1->width) * 4;
         // Get the index of the pixel of the second picture
-        p2c = picture2->colors + toIndex2D(i, k, picture2->width);
+        p2c = picture2->colors + toIndex2D(i, k, picture2->width) * 4;
 
         // Insert the distance between these two colors into the float volume
         *(fv->contents + toIndex3D(i, j, fv->width, k, fv->depth)) =
@@ -205,18 +204,36 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   fv->contents = (float *) malloc(sizeof(float) * fvDataLen);
 
   // Allocate space on the GPU
-  cudaMalloc((void **) &d_fv, fvDataLen * sizeof(float) * 4);
+  cudaMalloc((void **) &d_fv, fvDataLen * sizeof(float));
+
   cudaMalloc((void **) &d_picture1, picture1->width * picture1->height *
     sizeof(float) * 4);
   cudaMalloc((void **) &d_picture2, picture1->width * picture1->height *
     sizeof(float) * 4);
 
   // Give the pictures to the GPU
+  // Params: destination, source, size of data to be copied, operation
+  cudaMemcpy(d_picture1, picture1->colors,
+    picture1->width * picture1->height * 4 * sizeof(float),
+    cudaMemcpyHostToDevice
+  );
+  cudaMemcpy(d_picture2, picture2->colors,
+    picture1->width * picture1->height * 4 * sizeof(float),
+    cudaMemcpyHostToDevice
+  );
+
+  // Kernel stuff
+  
+
+  // Clear memory
+  cudaFree(d_fv);
+  cudaFree(d_picture1);
+  cudaFree(d_picture2);
 }
 
 int main() {
   struct Picture picture1, picture2;
-  struct FloatVolume dv;
+  struct FloatVolume dvs, dvp;
 
   srand(time(NULL));
 
@@ -231,10 +248,15 @@ int main() {
   printPicture(&picture2);
   printf("\n");
 
-  setDiffVolumeSerial(&dv, &picture1, &picture2);
+  setDiffVolumeSerial(&dvs, &picture1, &picture2);
+  setDiffVolumeParallel(&dvp, &picture1, &picture2);
 
-  printf("--- diff volume ---\n");
-  printFloatVolume(&dv);
+  printf("--- diff volume serial ---\n");
+  printFloatVolume(&dvs);
+  printf("\n");
+
+  printf("--- diff volume parallel ---\n");
+  printFloatVolume(&dvp);
   printf("\n");
 }
 
