@@ -154,6 +154,7 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
   float *d_picture2, unsigned picWidth, unsigned picHeight) {
   __shared__ float p1_section[10 * 10 * 4];
   __shared__ float p2_section[10 * 10 * 4];
+  unsigned i;
 
   // This thread's position in its block's subsection of the float volume
   unsigned sx, sy, sz;
@@ -164,20 +165,15 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
   // This thread's position in the entire float volume
   unsigned vx, vy, vz;
 
-  bool dummy;
-  // Subpicture x and subpicture y
-  // Pretty spicy if you ask me
-  unsigned spicx, spicy;
-
   // Get the position of this thread in its subsection
   sz = threadIdx.x % 10;
   sy = threadIdx.x / 100;
   sx = (threadIdx.x % 100) / 10;
 
   // Get the dimensions of the grid
-  gx = picWidth / 10;
-  gy = picHeight / 10;
-  gz = picWidth / 10;
+  gx = picWidth / 10 + (picWidth % 10);
+  gy = picHeight / 10 + (picHeight % 10);
+  gz = picWidth / 10 + (picWidth % 10);
 
   // Get the position of this thread's block
   bz = blockIdx.x % gz;
@@ -185,11 +181,11 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
   bx = (blockIdx.x % (gx * gz)) / gz;
 
   // Get the position of this thread in entire float volume
-  vx = sx * 10 * bx;
-  vy = sy * 10 * by;
-  vz = sz * 10 * bz;
+  vx = sx + 10 * bx;
+  vy = sy + 10 * by;
+  vz = sz + 10 * bz;
 
-  // Copy subpicture to shared memory
+  /* // Copy subpicture to shared memory
 
   // See if this thread needs to copy from picture 1
   // picture 1 covers width * height
@@ -199,7 +195,10 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
   if(sz == 0) {
     // Check if this thread will get a pixel not in the picture
     if(vx < picWidth && vy < picHeight) {
-      
+      p1_section[sx + sy * 10 + 0] = d_picture1[vx + vy * picWidth + 0];
+      p1_section[sx + sy * 10 + 1] = d_picture1[vx + vy * picWidth + 1];
+      p1_section[sx + sy * 10 + 2] = d_picture1[vx + vy * picWidth + 2];
+      p1_section[sx + sy * 10 + 3] = d_picture1[vx + vy * picWidth + 3];
     }
   }
 
@@ -209,9 +208,19 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
   // If the float volume x of this thread is zero,
   // then it needs to copy from picture 2
   if(sx == 0) {
+    // Check if this thread will get a pixel not in the picture
     if(vz < picWidth && vy < picHeight) {
-      
+      p2_section[sx + sy * 10 + 0] = d_picture2[vx + vy * picWidth + 0];
+      p2_section[sx + sy * 10 + 1] = d_picture2[vx + vy * picWidth + 1];
+      p2_section[sx + sy * 10 + 2] = d_picture2[vx + vy * picWidth + 2];
+      p2_section[sx + sy * 10 + 3] = d_picture2[vx + vy * picWidth + 3];
     }
+  } */
+
+  // Write into float volume
+  if(vx < picWidth && vy < picHeight && vz < picWidth) {
+    d_fv[vz + vx * picWidth + vy * picWidth * picHeight] =
+      vz + vx * picWidth + vy * picWidth * picHeight;
   }
 }
 
@@ -268,10 +277,39 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   dim3 dimGrid(num_blocks);
   dim3 dimBlock(1000);
 
+  // Do it
+  setDiffVolumeKernel<<<dimGrid, dimBlock>>>(d_fv, d_picture1, d_picture2,
+    picture1->width, picture1->height);
+
+  // Copy the float volume back into host memory
+  cudaMemcpy(fv->contents, d_fv, fvDataLen * sizeof(float),
+    cudaMemcpyDeviceToHost);
+
   // Clear memory
   cudaFree(d_fv);
   cudaFree(d_picture1);
   cudaFree(d_picture2);
+}
+
+// Return 1 if difference, 0 if none
+int compareFloatVolumes(struct FloatVolume *fv1, struct FloatVolume *fv2) {
+  unsigned i;
+
+  // Compare the dimensions
+  if(fv1->width != fv2->width ||
+    fv1->height != fv2->height ||
+    fv1->depth != fv2->depth) {
+    return 1;
+  }
+
+  // Compare the contents
+  for(i = 0; i < fv1->width * fv1->height * fv1->depth; i++) {
+    if(*(fv1->contents + i) != *(fv2->contents + i)) {
+      return 1;
+    }
+  }
+
+  return 0;
 }
 
 int main() {
@@ -280,8 +318,8 @@ int main() {
 
   srand(time(NULL));
 
-  setRandomPicture(&picture1, 2, 2);
-  setRandomPicture(&picture2, 2, 2);
+  setRandomPicture(&picture1, 11, 11);
+  setRandomPicture(&picture2, 11, 11);
 
   printf("--- picture1 ---\n");
   printPicture(&picture1);
@@ -292,14 +330,16 @@ int main() {
   printf("\n");
 
   setDiffVolumeSerial(&dvs, &picture1, &picture2);
-  /*setDiffVolumeParallel(&dvp, &picture1, &picture2);*/
+  setDiffVolumeParallel(&dvp, &picture1, &picture2);
 
-  printf("--- diff volume serial ---\n");
+  printf("%d\n", compareFloatVolumes(&dvs, &dvp));
+
+  /* printf("--- diff volume serial ---\n");
   printFloatVolume(&dvs);
   printf("\n");
 
-  /*printf("--- diff volume parallel ---\n");
+  printf("--- diff volume parallel ---\n");
   printFloatVolume(&dvp);
-  printf("\n");*/
+  printf("\n"); */
 }
 
