@@ -155,12 +155,14 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
   __shared__ float p1_section[10 * 10 * 4];
   __shared__ float p2_section[10 * 10 * 4];
 
-  // This thread's position in the entire float volume
-  unsigned vx, vy, vz;
   // This thread's position in its block's subsection of the float volume
   unsigned sx, sy, sz;
-  // Position of the block
+  // Dimensions of the grid
+  unsigned gx, gy, gz;
+  // Position of this thread's block
   unsigned bx, by, bz;
+  // This thread's position in the entire float volume
+  unsigned vx, vy, vz;
 
   bool dummy;
   // Subpicture x and subpicture y
@@ -172,13 +174,12 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
   sy = threadIdx.x / 100;
   sx = (threadIdx.x % 100) / 10;
 
-  // Get the position of this thread's block
-  // Get the grid dimensions
-  unsigned gx, gy, gz;
+  // Get the dimensions of the grid
   gx = picWidth / 10;
   gy = picHeight / 10;
   gz = picWidth / 10;
 
+  // Get the position of this thread's block
   bz = blockIdx.x % gz;
   by = blockIdx.x / (gx * gz);
   bx = (blockIdx.x % (gx * gz)) / gz;
@@ -190,35 +191,27 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
 
   // Copy subpicture to shared memory
 
-  // width = x, height = y, depth = z
-  // threadIdx.x = id of the thread in its block
-
   // See if this thread needs to copy from picture 1
   // picture 1 covers width * height
   
-  // If the z of this thread is zero, then it needs to copy from picture 1
-  if(threadIdx.x % 10 == 0) {
-    dummy = true;
-
-    // Extract the y of the respective subpicture pixel
-    spicy = threadIdx.x / 100;
-
-    // Extract the x of the respective subpicture pixel
-    spicx = (threadIdx.x % 100) / 10;
+  // If the float volume z of this thread is zero, 
+  // then it needs to copy from picture 1
+  if(sz == 0) {
+    // Check if this thread will get a pixel not in the picture
+    if(vx < picWidth && vy < picHeight) {
+      
+    }
   }
 
   // See if this thread needs to copy from picture 2
   // picture 2 covers depth * height
   
-  // If the x of this thread is zero, then it needs to copy from picture 2
-  if(threadIdx.x % 100 == 0) {
-    dummy = false;
-
-    // Extract the y of the respective subpicture pixel
-    spicy = threadIdx.x / 100;
-    
-    // Extract the x of the respective subpicture pixel
-    spicx = (threadIdx.x % 100) % 10;
+  // If the float volume x of this thread is zero,
+  // then it needs to copy from picture 2
+  if(sx == 0) {
+    if(vz < picWidth && vy < picHeight) {
+      
+    }
   }
 }
 
