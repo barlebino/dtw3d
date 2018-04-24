@@ -13,6 +13,8 @@ struct Picture {
 };
 
 // index = y * width * depth + x * depth + z
+// given a cube with one face towards you, 
+// index 0 is at top left, closest to you
 struct FloatVolume {
   unsigned width, height, depth;
   float *contents;
@@ -148,6 +150,78 @@ void setDiffVolumeSerial(struct FloatVolume *fv, struct Picture *picture1,
   }
 }
 
+__global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
+  float *d_picture2, unsigned picWidth, unsigned picHeight) {
+  __shared__ float p1_section[10 * 10 * 4];
+  __shared__ float p2_section[10 * 10 * 4];
+
+  // This thread's position in the entire float volume
+  unsigned vx, vy, vz;
+  // This thread's position in its block's subsection of the float volume
+  unsigned sx, sy, sz;
+  // Position of the block
+  unsigned bx, by, bz;
+
+  bool dummy;
+  // Subpicture x and subpicture y
+  // Pretty spicy if you ask me
+  unsigned spicx, spicy;
+
+  // Get the position of this thread in its subsection
+  sz = threadIdx.x % 10;
+  sy = threadIdx.x / 100;
+  sx = (threadIdx.x % 100) / 10;
+
+  // Get the position of this thread's block
+  // Get the grid dimensions
+  unsigned gx, gy, gz;
+  gx = picWidth / 10;
+  gy = picHeight / 10;
+  gz = picWidth / 10;
+
+  bz = blockIdx.x % gz;
+  by = blockIdx.x / (gx * gz);
+  bx = (blockIdx.x % (gx * gz)) / gz;
+
+  // Get the position of this thread in entire float volume
+  vx = sx * 10 * bx;
+  vy = sy * 10 * by;
+  vz = sz * 10 * bz;
+
+  // Copy subpicture to shared memory
+
+  // width = x, height = y, depth = z
+  // threadIdx.x = id of the thread in its block
+
+  // See if this thread needs to copy from picture 1
+  // picture 1 covers width * height
+  
+  // If the z of this thread is zero, then it needs to copy from picture 1
+  if(threadIdx.x % 10 == 0) {
+    dummy = true;
+
+    // Extract the y of the respective subpicture pixel
+    spicy = threadIdx.x / 100;
+
+    // Extract the x of the respective subpicture pixel
+    spicx = (threadIdx.x % 100) / 10;
+  }
+
+  // See if this thread needs to copy from picture 2
+  // picture 2 covers depth * height
+  
+  // If the x of this thread is zero, then it needs to copy from picture 2
+  if(threadIdx.x % 100 == 0) {
+    dummy = false;
+
+    // Extract the y of the respective subpicture pixel
+    spicy = threadIdx.x / 100;
+    
+    // Extract the x of the respective subpicture pixel
+    spicx = (threadIdx.x % 100) % 10;
+  }
+}
+
 void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   struct Picture *picture2) {
   // Memory locations of float arrays on the GPU
@@ -225,14 +299,14 @@ int main() {
   printf("\n");
 
   setDiffVolumeSerial(&dvs, &picture1, &picture2);
-  setDiffVolumeParallel(&dvp, &picture1, &picture2);
+  /*setDiffVolumeParallel(&dvp, &picture1, &picture2);*/
 
   printf("--- diff volume serial ---\n");
   printFloatVolume(&dvs);
   printf("\n");
 
-  printf("--- diff volume parallel ---\n");
+  /*printf("--- diff volume parallel ---\n");
   printFloatVolume(&dvp);
-  printf("\n");
+  printf("\n");*/
 }
 
