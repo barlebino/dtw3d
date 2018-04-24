@@ -145,6 +145,9 @@ void setDiffVolumeSerial(struct FloatVolume *fv, struct Picture *picture1,
         // Insert the distance between these two colors into the float volume
         *(fv->contents + toIndex3D(i, j, fv->width, k, fv->depth)) =
           diffColor(p1c, p2c);
+        
+        /* *(fv->contents + toIndex3D(i, j, fv->width, k, fv->depth)) =
+          toIndex3D(i, j, fv->width, k, fv->depth); */
       }
     }
   }
@@ -164,6 +167,8 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
   unsigned bx, by, bz;
   // This thread's position in the entire float volume
   unsigned vx, vy, vz;
+  // The location of the colors that this thread will be comparing
+  unsigned c1, c2;
 
   // Get the position of this thread in its subsection
   sz = threadIdx.x % 10;
@@ -171,9 +176,9 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
   sx = (threadIdx.x % 100) / 10;
 
   // Get the dimensions of the grid
-  gx = picWidth / 10 + (picWidth % 10);
-  gy = picHeight / 10 + (picHeight % 10);
   gz = picWidth / 10 + (picWidth % 10);
+  gy = picHeight / 10 + (picHeight % 10);
+  gx = picWidth / 10 + (picWidth % 10);
 
   // Get the position of this thread's block
   bz = blockIdx.x % gz;
@@ -185,7 +190,7 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
   vy = sy + 10 * by;
   vz = sz + 10 * bz;
 
-  /* // Copy subpicture to shared memory
+  // Copy subpicture to shared memory
 
   // See if this thread needs to copy from picture 1
   // picture 1 covers width * height
@@ -195,10 +200,10 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
   if(sz == 0) {
     // Check if this thread will get a pixel not in the picture
     if(vx < picWidth && vy < picHeight) {
-      p1_section[sx + sy * 10 + 0] = d_picture1[vx + vy * picWidth + 0];
-      p1_section[sx + sy * 10 + 1] = d_picture1[vx + vy * picWidth + 1];
-      p1_section[sx + sy * 10 + 2] = d_picture1[vx + vy * picWidth + 2];
-      p1_section[sx + sy * 10 + 3] = d_picture1[vx + vy * picWidth + 3];
+      for(i = 0; i < 4; i++) {
+        p1_section[(sx + sy * 10) * 4 + i] =
+          d_picture1[(vx + vy * picWidth) * 4 + i];
+      }
     }
   }
 
@@ -210,17 +215,29 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
   if(sx == 0) {
     // Check if this thread will get a pixel not in the picture
     if(vz < picWidth && vy < picHeight) {
-      p2_section[sx + sy * 10 + 0] = d_picture2[vx + vy * picWidth + 0];
-      p2_section[sx + sy * 10 + 1] = d_picture2[vx + vy * picWidth + 1];
-      p2_section[sx + sy * 10 + 2] = d_picture2[vx + vy * picWidth + 2];
-      p2_section[sx + sy * 10 + 3] = d_picture2[vx + vy * picWidth + 3];
+      for(i = 0; i < 4; i++) {
+        p2_section[(sz + sy * 10) * 4 + i] =
+          d_picture2[(vz + vy * picWidth) * 4 + i];
+      }
     }
-  } */
+  }
 
-  // Write into float volume
+  __syncthreads();
+  // Now each of d_picture1 and d_picture2 are properly filled out
+
+  // Write difference into float volume
   if(vx < picWidth && vy < picHeight && vz < picWidth) {
-    d_fv[vz + vx * picWidth + vy * picWidth * picHeight] =
-      vz + vx * picWidth + vy * picWidth * picHeight;
+    c1 = (sx + sy * 10) * 4;
+    c2 = (sz + sy * 10) * 4;
+    d_fv[vz + vx * picWidth + vy * picWidth * picWidth] =
+      sqrtf(
+        powf(p1_section[c1 + 0] - p2_section[c2 + 0], 2.f) +
+        powf(p1_section[c1 + 1] - p2_section[c2 + 1], 2.f) +
+        powf(p1_section[c1 + 2] - p2_section[c2 + 2], 2.f) +
+        powf(p1_section[c1 + 3] - p2_section[c2 + 3], 2.f)
+      );
+    /*d_fv[vz + vx * picWidth + vy * picWidth * picWidth] =
+      vz + vx * picWidth + vy * picWidth * picWidth;*/
   }
 }
 
@@ -234,7 +251,8 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   // If pictures have differing dimensions, then quit
   if(picture1->width != picture2->width ||
     picture2->height != picture2->height) {
-    printf("Pictures have different dimensions. Exiting setDiffVolmeSerial\n");
+    printf(
+      "Pictures have different dimensions. Exiting setDiffVolumeParallel\n");
     return;
   }
 
@@ -299,12 +317,16 @@ int compareFloatVolumes(struct FloatVolume *fv1, struct FloatVolume *fv2) {
   if(fv1->width != fv2->width ||
     fv1->height != fv2->height ||
     fv1->depth != fv2->depth) {
+    printf("Dimensions don't match\n");
     return 1;
   }
 
   // Compare the contents
   for(i = 0; i < fv1->width * fv1->height * fv1->depth; i++) {
-    if(*(fv1->contents + i) != *(fv2->contents + i)) {
+    /* printf("Comparing %f with %f\n", *(fv1->contents + i),
+      *(fv2->contents + i)); */
+    if(*(fv1->contents + i) - *(fv2->contents + i) > .001f) {
+      printf("Contents don't match\n");
       return 1;
     }
   }
@@ -322,24 +344,25 @@ int main() {
   setRandomPicture(&picture2, 11, 11);
 
   printf("--- picture1 ---\n");
-  printPicture(&picture1);
-  printf("\n");
+  /*printPicture(&picture1);
+  printf("\n");*/
 
   printf("--- picture2 ---\n");
-  printPicture(&picture2);
-  printf("\n");
+  /*printPicture(&picture2);
+  printf("\n");*/
 
   setDiffVolumeSerial(&dvs, &picture1, &picture2);
   setDiffVolumeParallel(&dvp, &picture1, &picture2);
 
-  printf("%d\n", compareFloatVolumes(&dvs, &dvp));
-
-  /* printf("--- diff volume serial ---\n");
+  printf("--- diff volume serial ---\n");
   printFloatVolume(&dvs);
   printf("\n");
 
   printf("--- diff volume parallel ---\n");
   printFloatVolume(&dvp);
-  printf("\n"); */
+  printf("\n");
+
+  printf("--- diff volume comparison ---\n");
+  printf("%d\n", compareFloatVolumes(&dvs, &dvp));
 }
 
