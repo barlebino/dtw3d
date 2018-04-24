@@ -236,8 +236,6 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
         powf(p1_section[c1 + 2] - p2_section[c2 + 2], 2.f) +
         powf(p1_section[c1 + 3] - p2_section[c2 + 3], 2.f)
       );
-    /*d_fv[vz + vx * picWidth + vy * picWidth * picWidth] =
-      vz + vx * picWidth + vy * picWidth * picWidth;*/
   }
 }
 
@@ -287,7 +285,8 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   // So get 10 x 10 subset of each picture, with 4 colors each
   
   // Get the number of blocks this program will use
-  // TODO : Assume that the maximum number of blocks in unlimited
+  // TODO : Assume that the maximum number of blocks that can run
+  //   at the same time is unlimited
   num_blocks = (fv->height / 10 + (fv->height % 10)) *
     (fv->width / 10 + (fv->width % 10)) *
     (fv->depth / 10 + (fv->depth % 10));
@@ -323,8 +322,6 @@ int compareFloatVolumes(struct FloatVolume *fv1, struct FloatVolume *fv2) {
 
   // Compare the contents
   for(i = 0; i < fv1->width * fv1->height * fv1->depth; i++) {
-    /* printf("Comparing %f with %f\n", *(fv1->contents + i),
-      *(fv2->contents + i)); */
     if(*(fv1->contents + i) - *(fv2->contents + i) > .001f) {
       printf("Contents don't match\n");
       return 1;
@@ -340,8 +337,8 @@ int main() {
 
   srand(time(NULL));
 
-  setRandomPicture(&picture1, 11, 11);
-  setRandomPicture(&picture2, 11, 11);
+  setRandomPicture(&picture1, 300, 300);
+  setRandomPicture(&picture2, 300, 300);
 
   printf("--- picture1 ---\n");
   /*printPicture(&picture1);
@@ -352,15 +349,16 @@ int main() {
   printf("\n");*/
 
   setDiffVolumeSerial(&dvs, &picture1, &picture2);
-  setDiffVolumeParallel(&dvp, &picture1, &picture2);
 
   printf("--- diff volume serial ---\n");
-  printFloatVolume(&dvs);
-  printf("\n");
+  /* printFloatVolume(&dvs);
+  printf("\n"); */
+
+  setDiffVolumeParallel(&dvp, &picture1, &picture2);
 
   printf("--- diff volume parallel ---\n");
-  printFloatVolume(&dvp);
-  printf("\n");
+  /* printFloatVolume(&dvp);
+  printf("\n"); */
 
   printf("--- diff volume comparison ---\n");
   printf("%d\n", compareFloatVolumes(&dvs, &dvp));
