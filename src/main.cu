@@ -337,7 +337,8 @@ int compareFloatVolumes(struct FloatVolume *fv1, struct FloatVolume *fv2) {
 }
 
 void setPathVolumeSerial(struct FloatVolume *pvs, struct FloatVolume *dv) {
-  unsigned i;
+  unsigned i, j;
+  float candidates2D[3], candidates3D[7];
 
   // Set up the float volume
   pvs->depth = dv->depth;
@@ -352,20 +353,40 @@ void setPathVolumeSerial(struct FloatVolume *pvs, struct FloatVolume *dv) {
     *(pvs->contents + i) = 0.f;
   }
 
+  // Set the first cells
+  *(pvs->contents + 0) = *(dv->contents + 0);
+
   // Fill cells where x = 0 and y = 0
-  for(i = 0; i < pvs->depth; i++) {
-    *(pvs->contents + toIndex3D(0, 0, pvs->width, i, pvs->depth)) = 1.f;
+  for(i = 1; i < pvs->depth; i++) {
+    // *(pvs->contents + toIndex3D(0, 0, pvs->width, i, pvs->depth)) = 1.f;
+    *(pvs->contents + toIndex3D(0, 0, pvs->width, i, pvs->depth)) =
+      *(dv->contents + toIndex3D(0, 0, pvs->width, i, pvs->depth)) +
+      *(pvs->contents + toIndex3D(0, 0, pvs->width, i - 1, pvs->depth));
   }
 
   // Fill cells where z = 0 and y = 0
-  for(i = 0; i < pvs->width; i++) {
-    *(pvs->contents + toIndex3D(0, i, pvs->width, 0, pvs->depth)) = 2.f;
+  for(i = 1; i < pvs->width; i++) {
+    // *(pvs->contents + toIndex3D(0, i, pvs->width, 0, pvs->depth)) = 2.f;
+    *(pvs->contents + toIndex3D(0, i, pvs->width, 0, pvs->depth)) =
+      *(dv->contents + toIndex3D(0, i, pvs->width, 0, pvs->depth)) +
+      *(pvs->contents + toIndex3D(0, i - 1, pvs->width, 0, pvs->depth));
   }
 
   // Fill cells where z = 0 and x = 0
-  for(i = 0; i < pvs->height; i++) {
-    *(pvs->contents + toIndex3D(i, 0, pvs->width, 0, pvs->depth)) = 3.f;
+  for(i = 1; i < pvs->height; i++) {
+    // *(pvs->contents + toIndex3D(i, 0, pvs->width, 0, pvs->depth)) = 3.f;
+    *(pvs->contents + toIndex3D(i, 0, pvs->width, 0, pvs->depth)) =
+      *(dv->contents + toIndex3D(i, 0, pvs->width, 0, pvs->depth)) +
+      *(pvs->contents + toIndex3D(i - 1, 0, pvs->width, 0, pvs->depth));
   }
+
+  // Fill cells where x = 0
+  for(i = 0; i < pvs->height; j++) {
+    for(j = 0; j < pvs->depth; j++) {
+      printf("humu ");
+    }
+  }
+  printf("\n");
 }
 
 int main() {
@@ -399,8 +420,8 @@ int main() {
   setDiffVolumeParallel(&dvp, &picture1, &picture2);
 
   printf("--- diff volume parallel ---\n");
-  /* printFloatVolume(&dvp);
-  printf("\n"); */
+  printFloatVolume(&dvp);
+  printf("\n");
 
   printf("--- diff volume comparison ---\n");
   printf("%d\n", compareFloatVolumes(&dvs, &dvp));
