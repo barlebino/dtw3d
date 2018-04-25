@@ -337,7 +337,7 @@ int compareFloatVolumes(struct FloatVolume *fv1, struct FloatVolume *fv2) {
 }
 
 void setPathVolumeSerial(struct FloatVolume *pvs, struct FloatVolume *dv) {
-  unsigned i, j;
+  unsigned i, j, k, l;
   float candidates2D[3], candidates3D[7], minCandidate;
 
   // Set up the float volume
@@ -443,6 +443,38 @@ void setPathVolumeSerial(struct FloatVolume *pvs, struct FloatVolume *dv) {
       *(pvs->contents + toIndex3D(i, j, pvs->width, 0, pvs->depth)) =
         *(dv->contents + toIndex3D(i, j, pvs->width, 0, pvs->depth)) +
         minCandidate;
+    }
+  }
+
+  // Finally fill in the remaining ones
+  for(i = 1; i < pvs->height; i++) {
+    for(j = 1; j < pvs->width; j++) {
+      for(k = 1; k < pvs->depth; k++) {
+        candidates3D[0] = *(pvs->contents +
+          toIndex3D(i, j, pvs->width, k - 1, pvs->depth));
+        candidates3D[1] = *(pvs->contents +
+          toIndex3D(i, j - 1, pvs->width, k, pvs->depth));
+        candidates3D[2] = *(pvs->contents +
+          toIndex3D(i, j - 1, pvs->width, k - 1, pvs->depth));
+        candidates3D[3] = *(pvs->contents +
+          toIndex3D(i - 1, j, pvs->width, k, pvs->depth));
+        candidates3D[4] = *(pvs->contents +
+          toIndex3D(i - 1, j, pvs->width, k - 1, pvs->depth));
+        candidates3D[5] = *(pvs->contents +
+          toIndex3D(i - 1, j - 1, pvs->width, k, pvs->depth));
+        candidates3D[6] = *(pvs->contents +
+          toIndex3D(i - 1, j - 1, pvs->width, k - 1, pvs->depth));
+
+        minCandidate = candidates3D[0];
+        for(l = 1; l < 7; l++) {
+          if(candidates3D[l] < minCandidate)
+            minCandidate = candidates3D[l];
+        }
+        
+        *(pvs->contents + toIndex3D(i, j, pvs->width, k, pvs->depth)) =
+          *(dv->contents + toIndex3D(i, j, pvs->width, k, pvs->depth)) +
+          minCandidate;
+      }
     }
   }
 }
