@@ -338,7 +338,7 @@ int compareFloatVolumes(struct FloatVolume *fv1, struct FloatVolume *fv2) {
 
 void setPathVolumeSerial(struct FloatVolume *pvs, struct FloatVolume *dv) {
   unsigned i, j;
-  float candidates2D[3], candidates3D[7];
+  float candidates2D[3], candidates3D[7], minCandidate;
 
   // Set up the float volume
   pvs->depth = dv->depth;
@@ -381,12 +381,26 @@ void setPathVolumeSerial(struct FloatVolume *pvs, struct FloatVolume *dv) {
   }
 
   // Fill cells where x = 0
-  for(i = 0; i < pvs->height; j++) {
-    for(j = 0; j < pvs->depth; j++) {
-      printf("humu ");
+  for(i = 1; i < pvs->height; i++) {
+    for(j = 1; j < pvs->depth; j++) {
+      candidates2D[0] =
+        *(pvs->contents + toIndex3D(i, 0, pvs->width, j - 1, pvs->depth));
+      candidates2D[1] =
+        *(pvs->contents + toIndex3D(i - 1, 0, pvs->width, j - 1, pvs->depth));
+      candidates2D[2] =
+        *(pvs->contents + toIndex3D(i - 1, 0, pvs->width, j, pvs->depth));
+
+      minCandidate = candidates2D[0];
+      if(candidates2D[1] < minCandidate)
+        minCandidate = candidates2D[1];
+      if(candidates2D[2] < minCandidate)
+        minCandidate = candidates2D[2];
+
+      *(pvs->contents + toIndex3D(i, 0, pvs->width, j, pvs->depth)) =
+        *(dv->contents + toIndex3D(i, 0, pvs->width, j, pvs->depth)) +
+        minCandidate;
     }
   }
-  printf("\n");
 }
 
 int main() {
@@ -425,6 +439,7 @@ int main() {
 
   printf("--- diff volume comparison ---\n");
   printf("%d\n", compareFloatVolumes(&dvs, &dvp));
+  printf("\n");
 
   // --- PATH VOLUME SECTION --------------------------------------------------
 
