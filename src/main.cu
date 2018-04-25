@@ -13,17 +13,19 @@ struct Picture {
 };
 
 // index = y * width * depth + x * depth + z
-// given a cube with one face towards you, 
+// given a cube with one face towards you,
 // index 0 is at top left, closest to you
 struct FloatVolume {
   unsigned width, height, depth;
   float *contents;
 };
 
+// y-coordinate = a, x-coordinate = b
 unsigned toIndex2D(unsigned a, unsigned b, unsigned blen) {
   return a * blen + b;
 }
 
+// y-coordinate = a, x-coordinate = b, z-cooridnate = c
 unsigned toIndex3D(unsigned a, unsigned b, unsigned blen, unsigned c,
   unsigned clen) {
   return a * blen * clen + b * clen + c;
@@ -38,14 +40,14 @@ void setRandomPicture(struct Picture *picture, unsigned width,
 
   picture->width = width;
   picture->height = height;
-  
+
   picture->colors = (float *) malloc(sizeof(float) *
     picture->width * picture->height * 4);
 
   for(i = 0; i < height; i++) {
     for(j = 0; j < width; j++) {
       currentColor = picture->colors + (i * width + j) * 4;
-      
+
       *(currentColor + 0) = (float) (rand() % 256);
       *(currentColor + 1) = (float) (rand() % 256);
       *(currentColor + 2) = (float) (rand() % 256);
@@ -62,9 +64,9 @@ void printPicture(struct Picture *picture) {
     for(j = 0; j < picture->width; j++) {
       currentColor = picture->colors + (i * picture->width + j) * 4;
 
-      printf("(%u, %u): [%f, %f, %f, %f]\n", i, j, 
+      printf("(%u, %u): [%f, %f, %f, %f]\n", i, j,
         *(currentColor + 0),
-        *(currentColor + 1), 
+        *(currentColor + 1),
         *(currentColor + 2),
         *(currentColor + 3)
       );
@@ -94,6 +96,8 @@ void setEmptyFloatVolume(struct FloatVolume *fv, unsigned width,
 
 void printFloatVolume(struct FloatVolume *fv) {
   unsigned i, j, k;
+
+  printf("Entering printFloatVolume...\n");
 
   for(i = 0; i < fv->height; i++) {
     for(j = 0; j < fv->width; j++) {
@@ -145,7 +149,7 @@ void setDiffVolumeSerial(struct FloatVolume *fv, struct Picture *picture1,
         // Insert the distance between these two colors into the float volume
         *(fv->contents + toIndex3D(i, j, fv->width, k, fv->depth)) =
           diffColor(p1c, p2c);
-        
+
         /* *(fv->contents + toIndex3D(i, j, fv->width, k, fv->depth)) =
           toIndex3D(i, j, fv->width, k, fv->depth); */
       }
@@ -194,8 +198,8 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
 
   // See if this thread needs to copy from picture 1
   // picture 1 covers width * height
-  
-  // If the float volume z of this thread is zero, 
+
+  // If the float volume z of this thread is zero,
   // then it needs to copy from picture 1
   if(sz == 0) {
     // Check if this thread will get a pixel not in the picture
@@ -209,7 +213,7 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
 
   // See if this thread needs to copy from picture 2
   // picture 2 covers depth * height
-  
+
   // If the float volume x of this thread is zero,
   // then it needs to copy from picture 2
   if(sx == 0) {
@@ -239,13 +243,14 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
   }
 }
 
+// TODO : make as parameters - max amount of memory, max number of blocks
 void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   struct Picture *picture2) {
   // Memory locations of float arrays on the GPU
   float *d_fv, *d_picture1, *d_picture2;
   int fvDataLen;
   unsigned num_blocks;
-  
+
   // If pictures have differing dimensions, then quit
   if(picture1->width != picture2->width ||
     picture2->height != picture2->height) {
@@ -258,7 +263,7 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   fv->height = picture1->height;
   fv->width = picture1->width;
   fv->depth = picture1->width;
-  
+
   fvDataLen = fv->height * fv->width * fv->depth;
 
   fv->contents = (float *) malloc(sizeof(float) * fvDataLen);
@@ -283,7 +288,7 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   // Kernel stuff
   // 1000 threads per block
   // So get 10 x 10 subset of each picture, with 4 colors each
-  
+
   // Get the number of blocks this program will use
   // TODO : Assume that the maximum number of blocks that can run
   //   at the same time is unlimited
@@ -331,14 +336,49 @@ int compareFloatVolumes(struct FloatVolume *fv1, struct FloatVolume *fv2) {
   return 0;
 }
 
+void setPathVolumeSerial(struct FloatVolume *pvs, struct FloatVolume *dv) {
+  unsigned i;
+
+  // Set up the float volume
+  pvs->depth = dv->depth;
+  pvs->width = dv->width;
+  pvs->height = dv->height;
+
+  pvs->contents = (float *) malloc(sizeof(float) * pvs->depth * pvs->width *
+    pvs->height);
+
+  // TESTING : Set all cells in fv2 to 0
+  for(i = 0; i < pvs->depth * pvs->width * pvs->height; i++) {
+    *(pvs->contents + i) = 0.f;
+  }
+
+  // Fill cells where x = 0 and y = 0
+  for(i = 0; i < pvs->depth; i++) {
+    *(pvs->contents + toIndex3D(0, 0, pvs->width, i, pvs->depth)) = 1.f;
+  }
+
+  // Fill cells where z = 0 and y = 0
+  for(i = 0; i < pvs->width; i++) {
+    *(pvs->contents + toIndex3D(0, i, pvs->width, 0, pvs->depth)) = 2.f;
+  }
+
+  // Fill cells where z = 0 and x = 0
+  for(i = 0; i < pvs->height; i++) {
+    *(pvs->contents + toIndex3D(i, 0, pvs->width, 0, pvs->depth)) = 3.f;
+  }
+}
+
 int main() {
   struct Picture picture1, picture2;
   struct FloatVolume dvs, dvp;
+  struct FloatVolume pvs, pvp;
 
   srand(time(NULL));
 
-  setRandomPicture(&picture1, 300, 300);
-  setRandomPicture(&picture2, 300, 300);
+  // --- PICTURE CREATION SECTION ---------------------------------------------
+
+  setRandomPicture(&picture1, 3, 3);
+  setRandomPicture(&picture2, 3, 3);
 
   printf("--- picture1 ---\n");
   /*printPicture(&picture1);
@@ -347,6 +387,8 @@ int main() {
   printf("--- picture2 ---\n");
   /*printPicture(&picture2);
   printf("\n");*/
+
+  // --- DIFF VOLUME SECTION --------------------------------------------------
 
   setDiffVolumeSerial(&dvs, &picture1, &picture2);
 
@@ -362,5 +404,12 @@ int main() {
 
   printf("--- diff volume comparison ---\n");
   printf("%d\n", compareFloatVolumes(&dvs, &dvp));
-}
 
+  // --- PATH VOLUME SECTION --------------------------------------------------
+
+  setPathVolumeSerial(&pvs, &dvs);
+  printFloatVolume(&pvs);
+  printf("\n");
+
+  // setPathVolumeParallel(&pvp, &dvp);
+}
