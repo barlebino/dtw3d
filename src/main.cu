@@ -401,6 +401,50 @@ void setPathVolumeSerial(struct FloatVolume *pvs, struct FloatVolume *dv) {
         minCandidate;
     }
   }
+ 
+  // Fill cells where y = 0
+  for(i = 1; i < pvs->width; i++) {
+    for(j = 1; j < pvs->depth; j++) {
+      candidates2D[0] =
+        *(pvs->contents + toIndex3D(0, i, pvs->width, j - 1, pvs->depth));
+      candidates2D[1] =
+        *(pvs->contents + toIndex3D(0, i - 1, pvs->width, j - 1, pvs->depth));
+      candidates2D[2] =
+        *(pvs->contents + toIndex3D(0, i - 1, pvs->width, j, pvs->depth));
+
+      minCandidate = candidates2D[0];
+      if(candidates2D[1] < minCandidate)
+        minCandidate = candidates2D[1];
+      if(candidates2D[2] < minCandidate)
+        minCandidate = candidates2D[2];
+
+      *(pvs->contents + toIndex3D(0, i, pvs->width, j, pvs->depth)) =
+        *(dv->contents + toIndex3D(0, i, pvs->width, j, pvs->depth)) +
+        minCandidate;
+    }
+  }
+
+  // Fill cells where z = 0
+  for(i = 1; i < pvs->height; i++) {
+    for(j = 1; j < pvs->width; j++) {
+      candidates2D[0] =
+        *(pvs->contents + toIndex3D(i, j - 1, pvs->width, 0, pvs->depth));
+      candidates2D[1] =
+        *(pvs->contents + toIndex3D(i - 1, j - 1, pvs->width, 0, pvs->depth));
+      candidates2D[2] =
+        *(pvs->contents + toIndex3D(i - 1, j, pvs->width, 0, pvs->depth));
+
+      minCandidate = candidates2D[0];
+      if(candidates2D[1] < minCandidate)
+        minCandidate = candidates2D[1];
+      if(candidates2D[2] < minCandidate)
+        minCandidate = candidates2D[2];
+
+      *(pvs->contents + toIndex3D(i, j, pvs->width, 0, pvs->depth)) =
+        *(dv->contents + toIndex3D(i, j, pvs->width, 0, pvs->depth)) +
+        minCandidate;
+    }
+  }
 }
 
 int main() {
