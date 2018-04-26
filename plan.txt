@@ -1,0 +1,21 @@
+box dimensions
+
+y = 2, x = 3, z = 4
+
+wave 1: [(0, 0, 0)]
+wave 2: [(0, 0, 1), (0, 1, 0), (1, 0, 0)]
+wave 3: [(0, 0, 2), (0, 1, 1), (1, 0, 1),
+         (0, 1, 1),
+
+> get best amount of work per core
+> block memory
+
+Kano Hello How Are You
+
+> each block will use 1000 threads
+> each block will work on a 10 x 10 section of the path volume
+  > each thread in the block will set its section to 0xFF
+  > each thread will get the max of its neighbors however many times...
+> on iteration 0, only block 0 at work
+> on iteration 1, adjacent blocks will work, depending on dimensions
+> etc.

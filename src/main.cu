@@ -97,8 +97,6 @@ void setEmptyFloatVolume(struct FloatVolume *fv, unsigned width,
 void printFloatVolume(struct FloatVolume *fv) {
   unsigned i, j, k;
 
-  printf("Entering printFloatVolume...\n");
-
   for(i = 0; i < fv->height; i++) {
     for(j = 0; j < fv->width; j++) {
       for(k = 0; k < fv->depth; k++) {
@@ -353,7 +351,7 @@ void setPathVolumeSerial(struct FloatVolume *pvs, struct FloatVolume *dv) {
     *(pvs->contents + i) = 0.f;
   }
 
-  // Set the first cells
+  // Set the first cell
   *(pvs->contents + 0) = *(dv->contents + 0);
 
   // Fill cells where x = 0 and y = 0
@@ -401,7 +399,7 @@ void setPathVolumeSerial(struct FloatVolume *pvs, struct FloatVolume *dv) {
         minCandidate;
     }
   }
- 
+
   // Fill cells where y = 0
   for(i = 1; i < pvs->width; i++) {
     for(j = 1; j < pvs->depth; j++) {
@@ -470,13 +468,133 @@ void setPathVolumeSerial(struct FloatVolume *pvs, struct FloatVolume *dv) {
           if(candidates3D[l] < minCandidate)
             minCandidate = candidates3D[l];
         }
-        
+
         *(pvs->contents + toIndex3D(i, j, pvs->width, k, pvs->depth)) =
           *(dv->contents + toIndex3D(i, j, pvs->width, k, pvs->depth)) +
           minCandidate;
       }
     }
   }
+}
+
+void setPathVolumeParallel(struct FloatVolume *pv, struct FloatVolume *dv) {
+  // Memory locations of float volumes on the GPU
+  float *d_pv, *d_dv;
+  int fvDataLen;
+  unsigned i, j;
+  float candidates2D[3], minCandidate;
+
+  // Create the FloatVolume
+  pv->height = dv->height;
+  pv->width = dv->width;
+  pv->depth = dv->depth;
+
+  fvDataLen = pv->height * pv->width * pv->depth;
+
+  pv->contents = (float *) malloc(sizeof(float) * fvDataLen);
+
+  // TESTING : Set all cells in fv2 to 0
+  for(i = 0; i < pv->depth * pv->width * pv->height; i++) {
+    *(pv->contents + i) = 0.f;
+  }
+
+  // Set the first cell
+  *(pv->contents + 0) = *(dv->contents + 0);
+
+  // Fill cells where x = 0 and y = 0
+  for(i = 1; i < pv->depth; i++) {
+    *(pv->contents + toIndex3D(0, 0, pv->width, i, pv->depth)) =
+      *(dv->contents + toIndex3D(0, 0, pv->width, i, pv->depth)) +
+      *(pv->contents + toIndex3D(0, 0, pv->width, i - 1, pv->depth));
+  }
+
+  // Fill cells where z = 0 and y = 0
+  for(i = 1; i < pv->width; i++) {
+    *(pv->contents + toIndex3D(0, i, pv->width, 0, pv->depth)) =
+      *(dv->contents + toIndex3D(0, i, pv->width, 0, pv->depth)) +
+      *(pv->contents + toIndex3D(0, i - 1, pv->width, 0, pv->depth));
+  }
+
+  // Fill cells where z = 0 and x = 0
+  for(i = 1; i < pv->height; i++) {
+    *(pv->contents + toIndex3D(i, 0, pv->width, 0, pv->depth)) =
+      *(dv->contents + toIndex3D(i, 0, pv->width, 0, pv->depth)) +
+      *(pv->contents + toIndex3D(i - 1, 0, pv->width, 0, pv->depth));
+  }
+
+  // Fill cells where x = 0
+  for(i = 1; i < pv->height; i++) {
+    for(j = 1; j < pv->depth; j++) {
+      candidates2D[0] =
+        *(pv->contents + toIndex3D(i, 0, pv->width, j - 1, pv->depth));
+      candidates2D[1] =
+        *(pv->contents + toIndex3D(i - 1, 0, pv->width, j - 1, pv->depth));
+      candidates2D[2] =
+        *(pv->contents + toIndex3D(i - 1, 0, pv->width, j, pv->depth));
+
+      minCandidate = candidates2D[0];
+      if(candidates2D[1] < minCandidate)
+        minCandidate = candidates2D[1];
+      if(candidates2D[2] < minCandidate)
+        minCandidate = candidates2D[2];
+
+      *(pv->contents + toIndex3D(i, 0, pv->width, j, pv->depth)) =
+        *(dv->contents + toIndex3D(i, 0, pv->width, j, pv->depth)) +
+        minCandidate;
+    }
+  }
+
+  // Fill cells where y = 0
+  for(i = 1; i < pv->width; i++) {
+    for(j = 1; j < pv->depth; j++) {
+      candidates2D[0] =
+        *(pv->contents + toIndex3D(0, i, pv->width, j - 1, pv->depth));
+      candidates2D[1] =
+        *(pv->contents + toIndex3D(0, i - 1, pv->width, j - 1, pv->depth));
+      candidates2D[2] =
+        *(pv->contents + toIndex3D(0, i - 1, pv->width, j, pv->depth));
+
+      minCandidate = candidates2D[0];
+      if(candidates2D[1] < minCandidate)
+        minCandidate = candidates2D[1];
+      if(candidates2D[2] < minCandidate)
+        minCandidate = candidates2D[2];
+
+      *(pv->contents + toIndex3D(0, i, pv->width, j, pv->depth)) =
+        *(dv->contents + toIndex3D(0, i, pv->width, j, pv->depth)) +
+        minCandidate;
+    }
+  }
+
+  // Fill cells where z = 0
+  for(i = 1; i < pv->height; i++) {
+    for(j = 1; j < pv->width; j++) {
+      candidates2D[0] =
+        *(pv->contents + toIndex3D(i, j - 1, pv->width, 0, pv->depth));
+      candidates2D[1] =
+        *(pv->contents + toIndex3D(i - 1, j - 1, pv->width, 0, pv->depth));
+      candidates2D[2] =
+        *(pv->contents + toIndex3D(i - 1, j, pv->width, 0, pv->depth));
+
+      minCandidate = candidates2D[0];
+      if(candidates2D[1] < minCandidate)
+        minCandidate = candidates2D[1];
+      if(candidates2D[2] < minCandidate)
+        minCandidate = candidates2D[2];
+
+      *(pv->contents + toIndex3D(i, j, pv->width, 0, pv->depth)) =
+        *(dv->contents + toIndex3D(i, j, pv->width, 0, pv->depth)) +
+        minCandidate;
+    }
+  }
+
+  // Allocate space on the GPU
+  cudaMalloc((void **) &d_pv, fvDataLen * sizeof(float));
+  cudaMalloc((void **) &d_dv, fvDataLen * sizeof(float));
+
+  // Give the diff volume to the GPU
+  cudaMemcpy(d_dv, dv->contents, fvDataLen * sizeof(float),
+    cudaMemcpyHostToDevice);
 }
 
 int main() {
@@ -488,8 +606,8 @@ int main() {
 
   // --- PICTURE CREATION SECTION ---------------------------------------------
 
-  setRandomPicture(&picture1, 3, 3);
-  setRandomPicture(&picture2, 3, 3);
+  setRandomPicture(&picture1, 3, 11);
+  setRandomPicture(&picture2, 3, 11);
 
   printf("--- picture1 ---\n");
   /*printPicture(&picture1);
@@ -510,8 +628,8 @@ int main() {
   setDiffVolumeParallel(&dvp, &picture1, &picture2);
 
   printf("--- diff volume parallel ---\n");
-  printFloatVolume(&dvp);
-  printf("\n");
+  /* printFloatVolume(&dvp);
+  printf("\n"); */
 
   printf("--- diff volume comparison ---\n");
   printf("%d\n", compareFloatVolumes(&dvs, &dvp));
@@ -520,8 +638,14 @@ int main() {
   // --- PATH VOLUME SECTION --------------------------------------------------
 
   setPathVolumeSerial(&pvs, &dvs);
-  printFloatVolume(&pvs);
-  printf("\n");
 
-  // setPathVolumeParallel(&pvp, &dvp);
+  printf("--- path volume serial ---\n");
+  /* printFloatVolume(&pvs);
+  printf("\n"); */
+
+  setPathVolumeParallel(&pvp, &dvp);
+
+  printf("--- path volume parallel ---\n");
+  printFloatVolume(&pvp);
+  printf("\n");
 }
