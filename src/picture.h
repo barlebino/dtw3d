@@ -11,7 +11,7 @@ struct Picture {
 // Sets the picture at location "picture" into a random picture of dimensions
 // width and height
 void setRandomPicture(struct Picture *picture, unsigned width,
-  unsigned height) ;
+  unsigned height);
 
 void printPicture(struct Picture *picture);
 
