@@ -5,12 +5,14 @@
 // For square root
 #include <math.h>
 
-// Color at index 0 is top left, at index 0 is top left + 1 to the right
+#include "picture.h"
+
+/* // Color at index 0 is top left, at index 0 is top left + 1 to the right
 // All colors are in [0, 255]
 struct Picture {
   unsigned width, height;
   float *colors;
-};
+}; */
 
 // index = y * width * depth + x * depth + z
 // given a cube with one face towards you,
@@ -29,49 +31,6 @@ unsigned toIndex2D(unsigned a, unsigned b, unsigned blen) {
 unsigned toIndex3D(unsigned a, unsigned b, unsigned blen, unsigned c,
   unsigned clen) {
   return a * blen * clen + b * clen + c;
-}
-
-// Sets the picture at location "picture" into a random picture of dimensions
-// width and height
-void setRandomPicture(struct Picture *picture, unsigned width,
-  unsigned height) {
-  unsigned i, j;
-  float *currentColor;
-
-  picture->width = width;
-  picture->height = height;
-
-  picture->colors = (float *) malloc(sizeof(float) *
-    picture->width * picture->height * 4);
-
-  for(i = 0; i < height; i++) {
-    for(j = 0; j < width; j++) {
-      currentColor = picture->colors + (i * width + j) * 4;
-
-      *(currentColor + 0) = (float) (rand() % 256);
-      *(currentColor + 1) = (float) (rand() % 256);
-      *(currentColor + 2) = (float) (rand() % 256);
-      *(currentColor + 3) = (float) (rand() % 256);
-    }
-  }
-}
-
-void printPicture(struct Picture *picture) {
-  unsigned i, j;
-  float *currentColor;
-
-  for(i = 0; i < picture->height; i++) {
-    for(j = 0; j < picture->width; j++) {
-      currentColor = picture->colors + (i * picture->width + j) * 4;
-
-      printf("(%u, %u): [%f, %f, %f, %f]\n", i, j,
-        *(currentColor + 0),
-        *(currentColor + 1),
-        *(currentColor + 2),
-        *(currentColor + 3)
-      );
-    }
-  }
 }
 
 void setEmptyFloatVolume(struct FloatVolume *fv, unsigned width,
@@ -610,12 +569,12 @@ int main() {
   setRandomPicture(&picture2, 3, 11);
 
   printf("--- picture1 ---\n");
-  /*printPicture(&picture1);
-  printf("\n");*/
+  printPicture(&picture1);
+  printf("\n");
 
   printf("--- picture2 ---\n");
-  /*printPicture(&picture2);
-  printf("\n");*/
+  printPicture(&picture2);
+  printf("\n");
 
   // --- DIFF VOLUME SECTION --------------------------------------------------
 
@@ -646,6 +605,6 @@ int main() {
   setPathVolumeParallel(&pvp, &dvp);
 
   printf("--- path volume parallel ---\n");
-  printFloatVolume(&pvp);
-  printf("\n");
+  /* printFloatVolume(&pvp);
+  printf("\n"); */
 }
