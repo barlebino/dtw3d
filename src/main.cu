@@ -203,6 +203,7 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   cudaFree(d_picture2);
 }
 
+// Function too thicc
 void pathVolumeInit(struct FloatVolume *pv, struct FloatVolume *dv) {
   int fvDataLen;
   unsigned i, j;
@@ -313,30 +314,30 @@ void pathVolumeInit(struct FloatVolume *pv, struct FloatVolume *dv) {
   }
 }
 
-void setPathVolumeSerial(struct FloatVolume *pvs, struct FloatVolume *dv) {
+void setPathVolumeSerial(struct FloatVolume *pv, struct FloatVolume *dv) {
   unsigned i, j, k, l;
   float candidates3D[7], minCandidate;
 
-  pathVolumeInit(pvs, dv);
+  pathVolumeInit(pv, dv);
 
   // Finally fill in the remaining ones
-  for(i = 1; i < pvs->height; i++) {
-    for(j = 1; j < pvs->width; j++) {
-      for(k = 1; k < pvs->depth; k++) {
-        candidates3D[0] = *(pvs->contents +
-          toIndex3D(i, j, pvs->width, k - 1, pvs->depth));
-        candidates3D[1] = *(pvs->contents +
-          toIndex3D(i, j - 1, pvs->width, k, pvs->depth));
-        candidates3D[2] = *(pvs->contents +
-          toIndex3D(i, j - 1, pvs->width, k - 1, pvs->depth));
-        candidates3D[3] = *(pvs->contents +
-          toIndex3D(i - 1, j, pvs->width, k, pvs->depth));
-        candidates3D[4] = *(pvs->contents +
-          toIndex3D(i - 1, j, pvs->width, k - 1, pvs->depth));
-        candidates3D[5] = *(pvs->contents +
-          toIndex3D(i - 1, j - 1, pvs->width, k, pvs->depth));
-        candidates3D[6] = *(pvs->contents +
-          toIndex3D(i - 1, j - 1, pvs->width, k - 1, pvs->depth));
+  for(i = 1; i < pv->height; i++) {
+    for(j = 1; j < pv->width; j++) {
+      for(k = 1; k < pv->depth; k++) {
+        candidates3D[0] = *(pv->contents +
+          toIndex3D(i, j, pv->width, k - 1, pv->depth));
+        candidates3D[1] = *(pv->contents +
+          toIndex3D(i, j - 1, pv->width, k, pv->depth));
+        candidates3D[2] = *(pv->contents +
+          toIndex3D(i, j - 1, pv->width, k - 1, pv->depth));
+        candidates3D[3] = *(pv->contents +
+          toIndex3D(i - 1, j, pv->width, k, pv->depth));
+        candidates3D[4] = *(pv->contents +
+          toIndex3D(i - 1, j, pv->width, k - 1, pv->depth));
+        candidates3D[5] = *(pv->contents +
+          toIndex3D(i - 1, j - 1, pv->width, k, pv->depth));
+        candidates3D[6] = *(pv->contents +
+          toIndex3D(i - 1, j - 1, pv->width, k - 1, pv->depth));
 
         minCandidate = candidates3D[0];
         for(l = 1; l < 7; l++) {
@@ -344,19 +345,92 @@ void setPathVolumeSerial(struct FloatVolume *pvs, struct FloatVolume *dv) {
             minCandidate = candidates3D[l];
         }
 
-        *(pvs->contents + toIndex3D(i, j, pvs->width, k, pvs->depth)) =
-          *(dv->contents + toIndex3D(i, j, pvs->width, k, pvs->depth)) +
+        *(pv->contents + toIndex3D(i, j, pv->width, k, pv->depth)) =
+          *(dv->contents + toIndex3D(i, j, pv->width, k, pv->depth)) +
           minCandidate;
       }
     }
   }
 }
 
+// Height, width, and height refer to the dimensions of the float volume
+__global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
+  unsigned width, unsigned depth) {
+  // The subvolume
+  __shared__ float sv[11 * 11 * 11];
+  float candidates3D[7], minCandidate;
+  unsigned i, j;
+
+  // This thread's position in its block's subsection of the float volume
+  unsigned sx, sy, sz;
+  // Dimensions of the grid
+  unsigned gx, gy, gz;
+  // Position of this thread's block
+  unsigned bx, by, bz;
+  // This thread's position in the entire float volume
+  unsigned vx, vy, vz;
+
+  // Get the position of this thread in its subsection
+  sz = threadIdx.x % 10;
+  sy = threadIdx.x / 100;
+  sx = (threadIdx.x % 100) / 10;
+
+  // Get the dimensions of the grid
+  gz = (width - 1) / 10 + ((width - 1) % 10);
+  gy = (height - 1) / 10 + ((height - 1) % 10);
+  gx = (width - 1) / 10 + ((width - 1) % 10);
+
+  // Get the position of this thread's block
+  bz = blockIdx.x % gz;
+  by = blockIdx.x / (gx * gz);
+  bx = (blockIdx.x % (gx * gz)) / gz;
+
+  // Get the position of this thread in entire float volume
+  vx = sx + 10 * bx + 1;
+  vy = sy + 10 * by + 1;
+  vz = sz + 10 * bz + 1;
+
+  // ez brute force... for demo purposes
+
+  // Make each thread do work over and over until subvolume is filled
+  for(i = 0; i < 10 + (10 - 1) + (10 - 1); i++) {
+    if(vy < height && vx < width && vz < depth) {
+      candidates3D[0] = d_pv[vy * width * depth + vx * depth + (vz - 1)];
+      candidates3D[1] = d_pv[vy * width * depth + (vx - 1) * depth + vz];
+      candidates3D[2] = d_pv[vy * width * depth + (vx - 1) * depth + (vz - 1)];
+      candidates3D[3] = d_pv[(vy - 1) * width * depth + vx * depth + vz];
+      candidates3D[4] = d_pv[(vy - 1) * width * depth + vx * depth + (vz - 1)];
+      candidates3D[5] = d_pv[(vy - 1) * width * depth + (vx - 1) * depth + vz];
+      candidates3D[6] =
+        d_pv[(vy - 1) * width * depth + (vx - 1) * depth + (vz - 1)];
+
+      minCandidate = candidates3D[0];
+      for(j = 1; j < 7; j++) {
+        if(candidates3D[j] < minCandidate)
+          minCandidate = candidates3D[j];
+      }
+
+      d_pv[vy * width * depth + vx * depth + vz] = minCandidate +
+        d_dv[vy * width * depth + vx * depth + vz];
+    }
+    __syncthreads();
+  }
+
+  /* if(vy < height && vx < width && vz < depth) {
+    d_pv[vy * width * depth + vx * depth + vz] = 11.f;
+  } */
+}
+
+// TODO : Currently the easy implementation
 void setPathVolumeParallel(struct FloatVolume *pv, struct FloatVolume *dv) {
   // Memory locations of float volumes on the GPU
   float *d_pv, *d_dv;
-  int fvDataLen;
+  int fvDataLen, i;
+  // y, x, z
+  unsigned gdim[3];
+  unsigned num_blocks, num_iter;
 
+  // Serial implementation
   pathVolumeInit(pv, dv);
   fvDataLen = pv->height * pv->width * pv->depth;
 
@@ -367,6 +441,48 @@ void setPathVolumeParallel(struct FloatVolume *pv, struct FloatVolume *dv) {
   // Give the diff volume to the GPU
   cudaMemcpy(d_dv, dv->contents, fvDataLen * sizeof(float),
     cudaMemcpyHostToDevice);
+  // Give incomplete path volume to the GPU
+  cudaMemcpy(d_pv, pv->contents, fvDataLen * sizeof(float),
+    cudaMemcpyHostToDevice);
+
+  // Kernel stuff
+  // 1000 threads per block
+  // Each block will get 11 x 11 x 11 subset of dv
+
+  // Get the number of blocks this program will use
+  // TODO : Assume that the maximum number of lbocks that can run
+  //   at the same time is unlimited
+  gdim[0] = ((pv->height - 1) / 10 + ((pv->height - 1) % 10));
+  gdim[1] = ((pv->width - 1) / 10 + ((pv->width - 1) % 10));
+  gdim[2] = ((pv->depth - 1) / 10 + ((pv->depth - 1) % 10));
+
+  num_blocks = gdim[0] * gdim[1] * gdim[2];
+  // Houdini stuff
+  num_iter = gdim[0] + (gdim[1] - 1) + (gdim[2] - 1);
+
+  dim3 dimGrid(num_blocks);
+  dim3 dimBlock(1000);
+
+  for(i = 0; i < num_iter; i++) {
+    // Each block will work on its own 10 x 10 x 10 portion
+    // Will need info from the previous, so will need 11 x 11 x 11 portion
+
+    // Dewit
+    setPathVolumeKernel<<<dimGrid, dimBlock>>>(d_pv, d_dv, pv->height,
+      pv->width, pv->depth);
+  }
+
+  // Copy the path volume back into host memory
+  cudaMemcpy(pv->contents, d_pv, fvDataLen * sizeof(float),
+    cudaMemcpyDeviceToHost);
+
+  // Clear memory
+  cudaFree(d_dv);
+  cudaFree(d_pv);
+
+  /* num_blocks = ((fv->height - 1) / 10 + ((fv->height - 1) % 10)) *
+    ((fv->width - 1) / 10 + ((fv->width - 1) % 10)) *
+    ((fv->depth - 1) / 10 + ((fv->depth - 1) % 10)); */
 }
 
 int main() {
@@ -378,8 +494,8 @@ int main() {
 
   // --- PICTURE CREATION SECTION ---------------------------------------------
 
-  setRandomPicture(&picture1, 3, 11);
-  setRandomPicture(&picture2, 3, 11);
+  setRandomPicture(&picture1, 75, 75);
+  setRandomPicture(&picture2, 75, 75);
 
   printf("--- picture1 ---\n");
   /* printPicture(&picture1);
@@ -420,4 +536,8 @@ int main() {
   printf("--- path volume parallel ---\n");
   /* printFloatVolume(&pvp);
   printf("\n"); */
+
+  printf("--- path volume comparison ---\n");
+  printf("%d\n", compareFloatVolumes(&pvs, &pvp));
+  printf("\n");
 }
