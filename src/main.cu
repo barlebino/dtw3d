@@ -141,9 +141,14 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   int fvDataLen;
   unsigned num_blocks;
   // Maximum dimensions of what subpictures can be held in the GPU
+  // Ideally each of the dimensions should be multiples of 10
   unsigned max_height_gpu, max_width_gpu;
+  // Maximum amount of floats that can be held in the float volume
+  unsigned max_volume_gpu;
   // Maximum number of blocks that can be used per iteration
   unsigned max_blocks;
+  // Based on the maximum that can be held in the GPU, get iterations
+  unsigned num_iterations;
 
   // If pictures have differing dimensions, then quit
   if(picture1->width != picture2->width ||
@@ -162,13 +167,25 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
 
   fv->contents = (float *) malloc(sizeof(float) * fvDataLen);
 
+  /* // Set limitations
+  max_height_gpu = 300;
+  max_width_gpu = 300;
+  max_volume_gpu = max_height_gpu * max_width_gpu;
+  max_blocks = 27000;
+  num_iterations = 1; */
+
   // Allocate space on the GPU
   cudaMalloc((void **) &d_fv, fvDataLen * sizeof(float));
-
   cudaMalloc((void **) &d_picture1, picture1->width * picture1->height *
     sizeof(float) * 4);
   cudaMalloc((void **) &d_picture2, picture1->width * picture1->height *
     sizeof(float) * 4);
+
+  /* cudaMalloc((void **) &d_fv, max_volume_gpu * sizeof(float));
+  cudaMalloc((void **) &d_picture1, max_height_gpu * max_width_gpu *
+    sizeof(float) * 4); // 4 for RGBA
+  cudaMalloc((void **) &d_picture2, max_height_gpu * max_width_gpu *
+    sizeof(float) * 4); */
 
   // Give the pictures to the GPU
   // Params: destination, source, size of data to be copied, operation
@@ -502,8 +519,8 @@ int main() {
 
   // --- PICTURE CREATION SECTION ---------------------------------------------
 
-  setRandomPicture(&picture1, 1000, 1000);
-  setRandomPicture(&picture2, 1000, 1000);
+  setRandomPicture(&picture1, 300, 300);
+  setRandomPicture(&picture2, 300, 300);
 
   printf("--- picture1 ---\n");
   /* printPicture(&picture1);
@@ -515,9 +532,9 @@ int main() {
 
   // --- DIFF VOLUME SECTION --------------------------------------------------
 
-  //setDiffVolumeSerial(&dvs, &picture1, &picture2);
+  setDiffVolumeSerial(&dvs, &picture1, &picture2);
 
-  //printf("--- diff volume serial ---\n");
+  printf("--- diff volume serial ---\n");
   /* printFloatVolume(&dvs);
   printf("\n"); */
 
