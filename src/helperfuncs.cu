@@ -38,8 +38,9 @@ int compareFloatVolumes(struct FloatVolume *fv1, struct FloatVolume *fv2) {
 
   // Compare the contents
   for(i = 0; i < fv1->width * fv1->height * fv1->depth; i++) {
-    if(*(fv1->contents + i) - *(fv2->contents + i) > .001f) {
-      printf("Contents don't match\n");
+    if(*(fv1->contents + i) - *(fv2->contents + i) > .01f) {
+      printf("Contents don't match: %f - %f > .01f\n",
+        *(fv1->contents + i), *(fv2->contents + i));
       return 1;
     }
   }

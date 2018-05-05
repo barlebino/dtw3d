@@ -140,6 +140,10 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   float *d_fv, *d_picture1, *d_picture2;
   int fvDataLen;
   unsigned num_blocks;
+  // Maximum dimensions of what subpictures can be held in the GPU
+  unsigned max_height_gpu, max_width_gpu;
+  // Maximum number of blocks that can be used per iteration
+  unsigned max_blocks;
 
   // If pictures have differing dimensions, then quit
   if(picture1->width != picture2->width ||
@@ -185,6 +189,8 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   num_blocks = (fv->height / 10 + (fv->height % 10)) *
     (fv->width / 10 + (fv->width % 10)) *
     (fv->depth / 10 + (fv->depth % 10));
+
+  printf("num_blocks: %d\n", num_blocks);
 
   dim3 dimGrid(num_blocks);
   dim3 dimBlock(1000);
@@ -324,7 +330,7 @@ void setPathVolumeSerial(struct FloatVolume *pv, struct FloatVolume *dv) {
   for(i = 1; i < pv->height; i++) {
     for(j = 1; j < pv->width; j++) {
       for(k = 1; k < pv->depth; k++) {
-        candidates3D[0] = *(pv->contents +
+        /* candidates3D[0] = *(pv->contents +
           toIndex3D(i, j, pv->width, k - 1, pv->depth));
         candidates3D[1] = *(pv->contents +
           toIndex3D(i, j - 1, pv->width, k, pv->depth));
@@ -347,7 +353,9 @@ void setPathVolumeSerial(struct FloatVolume *pv, struct FloatVolume *dv) {
 
         *(pv->contents + toIndex3D(i, j, pv->width, k, pv->depth)) =
           *(dv->contents + toIndex3D(i, j, pv->width, k, pv->depth)) +
-          minCandidate;
+          minCandidate; */
+
+        *(pv->contents + toIndex3D(i, j, pv->width, k, pv->depth)) = 11.f;
       }
     }
   }
@@ -393,7 +401,7 @@ __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
   // ez brute force... for demo purposes
 
   // Make each thread do work over and over until subvolume is filled
-  for(i = 0; i < 10 + (10 - 1) + (10 - 1); i++) {
+  /* for(i = 0; i < 10 + (10 - 1) + (10 - 1); i++) {
     if(vy < height && vx < width && vz < depth) {
       candidates3D[0] = d_pv[vy * width * depth + vx * depth + (vz - 1)];
       candidates3D[1] = d_pv[vy * width * depth + (vx - 1) * depth + vz];
@@ -414,11 +422,11 @@ __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
         d_dv[vy * width * depth + vx * depth + vz];
     }
     __syncthreads();
-  }
-
-  /* if(vy < height && vx < width && vz < depth) {
-    d_pv[vy * width * depth + vx * depth + vz] = 11.f;
   } */
+
+  if(vy < height && vx < width && vz < depth) {
+    d_pv[vy * width * depth + vx * depth + vz] = 11.f;
+  }
 }
 
 // TODO : Currently the easy implementation
@@ -463,14 +471,14 @@ void setPathVolumeParallel(struct FloatVolume *pv, struct FloatVolume *dv) {
   dim3 dimGrid(num_blocks);
   dim3 dimBlock(1000);
 
-  for(i = 0; i < num_iter; i++) {
+  // for(i = 0; i < num_iter; i++) {
     // Each block will work on its own 10 x 10 x 10 portion
     // Will need info from the previous, so will need 11 x 11 x 11 portion
 
     // Dewit
     setPathVolumeKernel<<<dimGrid, dimBlock>>>(d_pv, d_dv, pv->height,
       pv->width, pv->depth);
-  }
+  // }
 
   // Copy the path volume back into host memory
   cudaMemcpy(pv->contents, d_pv, fvDataLen * sizeof(float),
@@ -494,8 +502,8 @@ int main() {
 
   // --- PICTURE CREATION SECTION ---------------------------------------------
 
-  setRandomPicture(&picture1, 75, 75);
-  setRandomPicture(&picture2, 75, 75);
+  setRandomPicture(&picture1, 1000, 1000);
+  setRandomPicture(&picture2, 1000, 1000);
 
   printf("--- picture1 ---\n");
   /* printPicture(&picture1);
@@ -507,9 +515,9 @@ int main() {
 
   // --- DIFF VOLUME SECTION --------------------------------------------------
 
-  setDiffVolumeSerial(&dvs, &picture1, &picture2);
+  //setDiffVolumeSerial(&dvs, &picture1, &picture2);
 
-  printf("--- diff volume serial ---\n");
+  //printf("--- diff volume serial ---\n");
   /* printFloatVolume(&dvs);
   printf("\n"); */
 
@@ -525,19 +533,19 @@ int main() {
 
   // --- PATH VOLUME SECTION --------------------------------------------------
 
-  setPathVolumeSerial(&pvs, &dvs);
+  /* setPathVolumeSerial(&pvs, &dvs);
 
   printf("--- path volume serial ---\n");
-  /* printFloatVolume(&pvs);
-  printf("\n"); */
+  printFloatVolume(&pvs);
+  printf("\n");
 
   setPathVolumeParallel(&pvp, &dvp);
 
   printf("--- path volume parallel ---\n");
-  /* printFloatVolume(&pvp);
-  printf("\n"); */
+  printFloatVolume(&pvp);
+  printf("\n");
 
   printf("--- path volume comparison ---\n");
   printf("%d\n", compareFloatVolumes(&pvs, &pvp));
-  printf("\n");
+  printf("\n"); */
 }
