@@ -22,12 +22,14 @@ void setEmptyFloatVolume(struct FloatVolume *fv, unsigned width,
 void printFloatVolume(struct FloatVolume *fv) {
   unsigned i, j, k;
 
-  for(i = 0; i < fv->height; i++) {
+  printf("(%u, %u, %u): %f\n", 0, 0, 0,
+    *(fv->contents + toIndex3D(0, 0, fv->width, 0, fv->depth)));
+  /* for(i = 0; i < fv->height; i++) {
     for(j = 0; j < fv->width; j++) {
       for(k = 0; k < fv->depth; k++) {
         printf("(%u, %u, %u): %f\n", i, j, k,
            *(fv->contents + toIndex3D(i, j, fv->width, k, fv->depth)));
       }
     }
-  }
+  } */
 }

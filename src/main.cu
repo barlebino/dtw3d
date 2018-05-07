@@ -70,9 +70,12 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
   sx = (threadIdx.x % 100) / 10;
 
   // Get the dimensions of the grid
-  gz = picWidth / 10 + (picWidth % 10);
-  gy = picHeight / 10 + (picHeight % 10);
-  gx = picWidth / 10 + (picWidth % 10);
+  gz = picWidth / 10;
+  if(picWidth % 10) gz++;
+  gy = picHeight / 10;
+  if(picHeight % 10) gy++;
+  gx = picWidth / 10;
+  if(picWidth % 10) gx++;
 
   // Get the position of this thread's block
   bz = blockIdx.x % gz;
@@ -131,6 +134,10 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
         powf(p1_section[c1 + 3] - p2_section[c2 + 3], 2.f)
       );
   }
+
+  /* if(threadIdx.x == 111 && blockIdx.x == 3) {
+    d_fv[0] = vy;
+  } */
 }
 
 // TODO : make as parameters - max amount of memory, max number of blocks
@@ -139,7 +146,7 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   // Memory locations of float arrays on the GPU
   float *d_fv, *d_picture1, *d_picture2;
   int fvDataLen;
-  unsigned num_blocks;
+  unsigned num_blocks, gdim[3];
 
   // If pictures have differing dimensions, then quit
   if(picture1->width != picture2->width ||
@@ -181,9 +188,29 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   // Get the number of blocks this program will use
   // TODO : Assume that the maximum number of blocks that can run
   //   at the same time is unlimited
-  num_blocks = (fv->height / 10 + ((fv->height % 10) > 0)) *
+  /* num_blocks = (fv->height / 10 + ((fv->height % 10) > 0)) *
     (fv->width / 10 + ((fv->width % 10) > 0)) *
-    (fv->depth / 10 + ((fv->depth % 10) > 0));
+    (fv->depth / 10 + ((fv->depth % 10) > 0)); */
+  // y, then x, then z
+  gdim[0] = fv->height / 10;
+  if(fv->height % 10)
+    gdim[0] = gdim[0] + 1;
+  gdim[1] = fv->width / 10;
+  if(fv->width % 10)
+    gdim[1] = gdim[1] + 1;
+  gdim[2] = fv->depth / 10;
+  if(fv->depth % 10)
+    gdim[2] = gdim[2] + 1;
+  num_blocks = gdim[0] * gdim[1] * gdim[2];
+  /* num_blocks = fv->height / 10 * fv->width / 10 * fv->depth / 10;
+  if(fv->height % 10) num_blocks++;
+  if(fv->width % 10) num_blocks++;
+  if(fv->depth % 10) num_blocks++; */
+
+  printf("gdim: [%u, %u, %u]\n", gdim[0], gdim[1], gdim[2]);
+  printf("num_blocks: %u\n", num_blocks);
+  printf("picture1->width: %u\n", picture1->width);
+  printf("picture1->height: %u\n", picture1->height);
 
   dim3 dimGrid(num_blocks);
   dim3 dimBlock(1000);
@@ -219,6 +246,12 @@ void setBigDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
     return;
   }
 
+  // Check if bad subpicture_height value
+  if(subpicture_height > picture1->height) {
+    printf("subpicture_height > picture1->height\n");
+    return;
+  }
+
   // Allocate space for the final float volume
   fv->height = picture1->height;
   fv->width = picture1->width;
@@ -251,6 +284,13 @@ void setBigDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   subfloatvolume_size = subpicture1.height * subpicture1.width *
     subpicture2.width;
 
+  /* printf("--- Info ---\n");
+  printf("subpicture1.dim: %u, %u\n", subpicture1.width, subpicture1.height);
+  printf("subpicture2.dim: %u, %u\n", subpicture2.width, subpicture2.height);
+  printf("numIterations: %u\n", numIterations);
+  printf("subpicture_size: %u\n", subpicture_size);
+  printf("subfloatvolume_size: %u\n", subfloatvolume_size); */
+
   // numIterations - 1 because last iteration is a special case
   for(i = 0; i < numIterations - 1; i++) {
     // Load the subpictures
@@ -282,6 +322,11 @@ void setBigDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   }
   subpicture2.height = subpicture1.height;
 
+  /* printf("final subpicture1.dim: %u, %u\n", subpicture1.width,
+    subpicture1.height);
+  printf("final subpicture2.dim: %u, %u\n", subpicture2.width,
+    subpicture2.height); */
+
   // Reallocate subpictures
   subpicture1.colors = (float *) malloc(sizeof(float) * subpicture1.width *
     subpicture1.height * 4); // RGBA
@@ -292,6 +337,9 @@ void setBigDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   subpicture_size = subpicture1.height * subpicture1.width * 4; // RGBA
   subfloatvolume_size = subpicture1.height * subpicture1.width *
     subpicture2.width;
+
+  printf("final subpicture_size: %u\n", subpicture_size);
+  printf("final subfloatvolume_size: %u\n", subfloatvolume_size);
 
   // Load the subpictures
   memcpy(subpicture1.colors, picture1->colors + subpicture_size * i,
@@ -428,7 +476,7 @@ void setPathVolumeSerial(struct FloatVolume *pv, struct FloatVolume *dv) {
   for(i = 1; i < pv->height; i++) {
     for(j = 1; j < pv->width; j++) {
       for(k = 1; k < pv->depth; k++) {
-        /* candidates3D[0] = *(pv->contents +
+        candidates3D[0] = *(pv->contents +
           toIndex3D(i, j, pv->width, k - 1, pv->depth));
         candidates3D[1] = *(pv->contents +
           toIndex3D(i, j - 1, pv->width, k, pv->depth));
@@ -451,9 +499,9 @@ void setPathVolumeSerial(struct FloatVolume *pv, struct FloatVolume *dv) {
 
         *(pv->contents + toIndex3D(i, j, pv->width, k, pv->depth)) =
           *(dv->contents + toIndex3D(i, j, pv->width, k, pv->depth)) +
-          minCandidate; */
+          minCandidate;
 
-        *(pv->contents + toIndex3D(i, j, pv->width, k, pv->depth)) = 11.f;
+        //*(pv->contents + toIndex3D(i, j, pv->width, k, pv->depth)) = 11.f;
       }
     }
   }
@@ -499,7 +547,7 @@ __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
   // ez brute force... for demo purposes
 
   // Make each thread do work over and over until subvolume is filled
-  /* for(i = 0; i < 10 + (10 - 1) + (10 - 1); i++) {
+  for(i = 0; i < 10 + (10 - 1) + (10 - 1); i++) {
     if(vy < height && vx < width && vz < depth) {
       candidates3D[0] = d_pv[vy * width * depth + vx * depth + (vz - 1)];
       candidates3D[1] = d_pv[vy * width * depth + (vx - 1) * depth + vz];
@@ -520,11 +568,11 @@ __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
         d_dv[vy * width * depth + vx * depth + vz];
     }
     __syncthreads();
-  } */
-
-  if(vy < height && vx < width && vz < depth) {
-    d_pv[vy * width * depth + vx * depth + vz] = 11.f;
   }
+
+  /* if(vy < height && vx < width && vz < depth) {
+    d_pv[vy * width * depth + vx * depth + vz] = 11.f;
+  } */
 }
 
 // TODO : Currently the easy implementation
@@ -563,20 +611,20 @@ void setPathVolumeParallel(struct FloatVolume *pv, struct FloatVolume *dv) {
   gdim[2] = ((pv->depth - 1) / 10 + ((pv->depth - 1) % 10));
 
   num_blocks = gdim[0] * gdim[1] * gdim[2];
-  // Houdini stuff
+  // Houdini stuff (Manhattan distance + 1)
   num_iter = gdim[0] + (gdim[1] - 1) + (gdim[2] - 1);
 
   dim3 dimGrid(num_blocks);
   dim3 dimBlock(1000);
 
-  // for(i = 0; i < num_iter; i++) {
+  for(i = 0; i < num_iter; i++) {
     // Each block will work on its own 10 x 10 x 10 portion
     // Will need info from the previous, so will need 11 x 11 x 11 portion
 
     // Dewit
     setPathVolumeKernel<<<dimGrid, dimBlock>>>(d_pv, d_dv, pv->height,
       pv->width, pv->depth);
-  // }
+  }
 
   // Copy the path volume back into host memory
   cudaMemcpy(pv->contents, d_pv, fvDataLen * sizeof(float),
@@ -600,8 +648,8 @@ int main() {
 
   // --- PICTURE CREATION SECTION ---------------------------------------------
 
-  setRandomPicture(&picture1, 900, 900);
-  setRandomPicture(&picture2, 900, 900);
+  setRandomPicture(&picture1, 15, 2);
+  setRandomPicture(&picture2, 15, 2);
 
   printf("--- picture1 ---\n");
   /* printPicture(&picture1);
@@ -619,12 +667,12 @@ int main() {
   /* printFloatVolume(&dvs);
   printf("\n"); */
 
-  //setDiffVolumeParallel(&dvp, &picture1, &picture2);
-  setBigDiffVolumeParallel(&dvp, &picture1, &picture2, 50);
+  setDiffVolumeParallel(&dvp, &picture1, &picture2);
+  // setBigDiffVolumeParallel(&dvp, &picture1, &picture2, 1);
 
   printf("--- diff volume parallel ---\n");
-  /* printFloatVolume(&dvp);
-  printf("\n"); */
+  printFloatVolume(&dvp);
+  printf("\n");
 
   printf("--- diff volume comparison ---\n");
   printf("%d\n", compareFloatVolumes(&dvs, &dvp));
