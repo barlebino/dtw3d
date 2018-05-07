@@ -16,7 +16,7 @@ void setDiffVolumeSerial(struct FloatVolume *fv, struct Picture *picture1,
 
   // If pictures have differing dimensions, then quit
   if(picture1->width != picture2->width ||
-    picture2->height != picture2->height) {
+    picture1->height != picture2->height) {
     printf("Pictures have different dimensions. Exiting setDiffVolmeSerial\n");
     return;
   }
@@ -140,15 +140,6 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   float *d_fv, *d_picture1, *d_picture2;
   int fvDataLen;
   unsigned num_blocks;
-  // Maximum dimensions of what subpictures can be held in the GPU
-  // Ideally each of the dimensions should be multiples of 10
-  unsigned max_height_gpu, max_width_gpu;
-  // Maximum amount of floats that can be held in the float volume
-  unsigned max_volume_gpu;
-  // Maximum number of blocks that can be used per iteration
-  unsigned max_blocks;
-  // Based on the maximum that can be held in the GPU, get iterations
-  unsigned num_iterations;
 
   // If pictures have differing dimensions, then quit
   if(picture1->width != picture2->width ||
@@ -167,25 +158,12 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
 
   fv->contents = (float *) malloc(sizeof(float) * fvDataLen);
 
-  /* // Set limitations
-  max_height_gpu = 300;
-  max_width_gpu = 300;
-  max_volume_gpu = max_height_gpu * max_width_gpu;
-  max_blocks = 27000;
-  num_iterations = 1; */
-
   // Allocate space on the GPU
   cudaMalloc((void **) &d_fv, fvDataLen * sizeof(float));
   cudaMalloc((void **) &d_picture1, picture1->width * picture1->height *
     sizeof(float) * 4);
   cudaMalloc((void **) &d_picture2, picture1->width * picture1->height *
     sizeof(float) * 4);
-
-  /* cudaMalloc((void **) &d_fv, max_volume_gpu * sizeof(float));
-  cudaMalloc((void **) &d_picture1, max_height_gpu * max_width_gpu *
-    sizeof(float) * 4); // 4 for RGBA
-  cudaMalloc((void **) &d_picture2, max_height_gpu * max_width_gpu *
-    sizeof(float) * 4); */
 
   // Give the pictures to the GPU
   // Params: destination, source, size of data to be copied, operation
@@ -203,11 +181,9 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   // Get the number of blocks this program will use
   // TODO : Assume that the maximum number of blocks that can run
   //   at the same time is unlimited
-  num_blocks = (fv->height / 10 + (fv->height % 10)) *
-    (fv->width / 10 + (fv->width % 10)) *
-    (fv->depth / 10 + (fv->depth % 10));
-
-  printf("num_blocks: %d\n", num_blocks);
+  num_blocks = (fv->height / 10 + ((fv->height % 10) > 0)) *
+    (fv->width / 10 + ((fv->width % 10) > 0)) *
+    (fv->depth / 10 + ((fv->depth % 10) > 0));
 
   dim3 dimGrid(num_blocks);
   dim3 dimBlock(1000);
@@ -224,6 +200,111 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   cudaFree(d_fv);
   cudaFree(d_picture1);
   cudaFree(d_picture2);
+}
+
+// Inefficient but working
+void setBigDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
+  struct Picture *picture2, unsigned subpicture_height) {
+  unsigned numIterations, i;
+  struct FloatVolume subfloatvolume;
+  struct Picture subpicture1, subpicture2;
+  unsigned subpicture_size, subfloatvolume_size;
+  int fvDataLen;
+
+  // If pictures have differing dimensions, then quit
+  if(picture1->width != picture2->width ||
+    picture1->height != picture2->height) {
+    printf(
+      "Pictures have different dimensions. Exiting setBigDiffVolumeParallel");
+    return;
+  }
+
+  // Allocate space for the final float volume
+  fv->height = picture1->height;
+  fv->width = picture1->width;
+  fv->depth = picture1->width;
+  fvDataLen = fv->height * fv->width * fv->depth;
+  fv->contents = (float *) malloc(sizeof(float) * fvDataLen);
+
+  // Clear float volume for testing
+  for(i = 0; i < fvDataLen; i++) {
+    *(fv->contents + i) = 0.f;
+  }
+
+  // Allocate space for each of the subpictures
+  // (subfloatvolume will be allocated in setDiffVolumeParallel)
+  subpicture1.width = picture1->width;
+  subpicture1.height = subpicture_height;
+  subpicture1.colors = (float *) malloc(sizeof(float) * subpicture1.width *
+    subpicture1.height * 4); // RGBA
+  // Note: dimensions of picture1 and picture2 are the same
+  subpicture2.width = picture2->width;
+  subpicture2.height = subpicture_height;
+  subpicture2.colors = (float *) malloc(sizeof(float) * subpicture2.width *
+    subpicture2.height * 4); // RGBA
+
+  numIterations = picture1->height / subpicture_height +
+    ((picture1->height % subpicture_height) > 0);
+  // How many 32 bit floats are in one subpicture
+  subpicture_size = subpicture1.height * subpicture1.width * 4; // RGBA
+  // How many 32 bit floats are in one subfloatvolume
+  subfloatvolume_size = subpicture1.height * subpicture1.width *
+    subpicture2.width;
+
+  // numIterations - 1 because last iteration is a special case
+  for(i = 0; i < numIterations - 1; i++) {
+    // Load the subpictures
+    memcpy(subpicture1.colors, picture1->colors + subpicture_size * i,
+      subpicture_size * sizeof(float));
+    memcpy(subpicture2.colors, picture2->colors + subpicture_size * i,
+      subpicture_size * sizeof(float));
+
+    // Call the normal diff volume function
+    setDiffVolumeParallel(&subfloatvolume, &subpicture1, &subpicture2);
+
+    // Copy the results of the subvolume into the final float volume
+    memcpy(fv->contents + subfloatvolume_size * i, subfloatvolume.contents,
+      subfloatvolume_size * sizeof(float));
+
+    // Deallocate the subvolume
+    free(subfloatvolume.contents);
+  }
+
+  free(subpicture1.colors);
+  free(subpicture2.colors);
+
+  // Take care of case where last iteration must process subpictures with
+  //   smaller heights
+
+  // Find out heights of subpictures
+  if(picture1->height % subpicture_height) {
+    subpicture1.height = picture1->height % subpicture_height;
+  }
+  subpicture2.height = subpicture1.height;
+
+  // Reallocate subpictures
+  subpicture1.colors = (float *) malloc(sizeof(float) * subpicture1.width *
+    subpicture1.height * 4); // RGBA
+  subpicture2.colors = (float *) malloc(sizeof(float) * subpicture2.width *
+    subpicture2.height * 4); // RGBA
+
+  // Recalculate sizes
+  subpicture_size = subpicture1.height * subpicture1.width * 4; // RGBA
+  subfloatvolume_size = subpicture1.height * subpicture1.width *
+    subpicture2.width;
+
+  // Load the subpictures
+  memcpy(subpicture1.colors, picture1->colors + subpicture_size * i,
+    subpicture_size * sizeof(float));
+  memcpy(subpicture2.colors, picture2->colors + subpicture_size * i,
+    subpicture_size * sizeof(float));
+
+  // Call the normal diff volume Function
+  setDiffVolumeParallel(&subfloatvolume, &subpicture1, &subpicture2);
+
+  // Copy the results of the subvolume into the final float volume
+  memcpy(fv->contents + subfloatvolume_size * i, subfloatvolume.contents,
+    subfloatvolume_size * sizeof(float));
 }
 
 // Function too thicc
@@ -519,8 +600,8 @@ int main() {
 
   // --- PICTURE CREATION SECTION ---------------------------------------------
 
-  setRandomPicture(&picture1, 300, 300);
-  setRandomPicture(&picture2, 300, 300);
+  setRandomPicture(&picture1, 900, 900);
+  setRandomPicture(&picture2, 900, 900);
 
   printf("--- picture1 ---\n");
   /* printPicture(&picture1);
@@ -538,7 +619,8 @@ int main() {
   /* printFloatVolume(&dvs);
   printf("\n"); */
 
-  setDiffVolumeParallel(&dvp, &picture1, &picture2);
+  //setDiffVolumeParallel(&dvp, &picture1, &picture2);
+  setBigDiffVolumeParallel(&dvp, &picture1, &picture2, 50);
 
   printf("--- diff volume parallel ---\n");
   /* printFloatVolume(&dvp);
