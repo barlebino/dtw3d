@@ -354,7 +354,7 @@ void setZ0Y0(struct FloatVolume *pv, struct FloatVolume *dv) {
 // Fill cells where z = 0 and x = 0
 void setZ0X0(struct FloatVolume *pv, struct FloatVolume *dv) {
   unsigned i;
-  for(i = 1; i < pv->height; i++) { 
+  for(i = 1; i < pv->height; i++) {
     *(pv->contents + toIndex3D(i, 0, pv->width, 0, pv->depth)) =
       *(dv->contents + toIndex3D(i, 0, pv->width, 0, pv->depth)) +
       *(pv->contents + toIndex3D(i - 1, 0, pv->width, 0, pv->depth));
@@ -365,7 +365,7 @@ void setZ0X0(struct FloatVolume *pv, struct FloatVolume *dv) {
 void setX0(struct FloatVolume *pv, struct FloatVolume *dv) {
   float candidates2D[3], minCandidate;
   unsigned i, j;
-  for(i = 1; i < pv->height; i++) { 
+  for(i = 1; i < pv->height; i++) {
     for(j = 1; j < pv->depth; j++) {
       candidates2D[0] =
         *(pv->contents + toIndex3D(i, 0, pv->width, j - 1, pv->depth));
@@ -428,7 +428,7 @@ void setZ0(struct FloatVolume *pv, struct FloatVolume *dv) {
       candidates2D[2] =
         *(pv->contents + toIndex3D(i - 1, j, pv->width, 0, pv->depth));
 
-      minCandidate = candidates2D[0]; 
+      minCandidate = candidates2D[0];
       if(candidates2D[1] < minCandidate)
         minCandidate = candidates2D[1];
       if(candidates2D[2] < minCandidate)
@@ -466,19 +466,14 @@ void pathVolumeInit(struct FloatVolume *pv, struct FloatVolume *dv) {
 
   // Fill cells where x = 0 and y = 0
   setX0Y0(pv, dv);
-
   // Fill cells where z = 0 and y = 0
   setZ0Y0(pv, dv);
-
   // Fill cells where z = 0 and x = 0
   setZ0X0(pv, dv);
-
   // Fill cells where x = 0
   setX0(pv, dv);
-
   // Fill cells where y = 0
   setY0(pv, dv);
-
   // Fill cells where z = 0
   setZ0(pv, dv);
 }
@@ -672,46 +667,55 @@ void setPathVolumeParallel(struct FloatVolume *pv, struct FloatVolume *dv) {
   // Clear memory
   cudaFree(d_dv);
   cudaFree(d_pv);
-
-  /* num_blocks = ((fv->height - 1) / 10 + ((fv->height - 1) % 10)) *
-    ((fv->width - 1) / 10 + ((fv->width - 1) % 10)) *
-    ((fv->depth - 1) / 10 + ((fv->depth - 1) % 10)); */
 }
 
-void makeEmptyFloatVolume(struct FloatVolume *fv, unsigned height,
-  unsigned width, unsigned depth) {
-  unsigned fvDataLen, i;
+void setBigPathVolumeParallel(struct FloatVolume *pv, struct FloatVolume *dv,
+  unsigned subvolume_height) {
+  struct FloatVolume spv, sdv;
+  unsigned subvolume_size, numIterations;
 
-  fv->height = height;
-  fv->width = width;
-  fv->depth = depth;
+  // Initialize the empty sub-pathvolume
+  setEmptyFloatVolume(&spv, subvolume_height, dv->width, dv->depth);
+  // Initialize the empty sub-diffvolume
+  setEmptyFloatVolume(&sdv, subvolume_height, dv->width, dv->depth);
+  // Initialize the empty final path volume
+  setEmptyFloatVolume(pv, dv->height, dv->width, dv->depth);
 
-  fvDataLen = fv->height * fv->width * fv->depth;
+  // Creating the path volume will be done increments of sub-pathvolumes
+  subvolume_size = subvolume_height * dv->width * dv->depth;
+  // Find out how many sub-pathvolumes we will need to calculate
+  // Every subvolume will calculate subvolume_size - 1 portion of the
+  //   total subvolume, since the y = 0 of the subvolume is already in the
+  //   total subvolume
+  printf("subvolume_height: %u\n", subvolume_height);
+  printf("pv->height - 1: %u\n", pv->height - 1);
+  printf("spv.height - 1: %u\n", spv.height - 1);
+  numIterations = (pv->height - 1) / (spv.height - 1);
+  if((pv->height - 1) % (spv.height - 1)) numIterations++;
 
-  fv->contents = (float *) malloc(sizeof(float) * fvDataLen);
-
-  // Clear everything
-  for(i = 0; i < fvDataLen; i++) {
-    *(fv->contents + i) = 0;
-  }
-}
-
-void setBigPathVolumeParallel(struct FloatVolume *pv, struct FloatVolume *dv) {
-  // Initialize the empty path volume
-  makeEmptyFloatVolume(pv, dv->height, dv->width, dv->depth);
-
-  // Set the very first cell
+  // Set the very first cell in the final path volume
   *(pv->contents + 0) = *(dv->contents + 0);
 
   // Complete x = 0, y = 0
   setX0Y0(pv, dv);
-
   // Complete z = 0, y = 0
-  
-
+  setZ0Y0(pv, dv);
   // Complete y = 0
+  setY0(pv, dv);
 
-  
+  // Copy y = 0 to sub-pathvolume
+  memcpy(spv.contents, pv->contents, sizeof(float) * spv.width * spv.depth);
+  // Copy contents from diff volume to sub-diffvolume
+  memcpy(sdv.contents, dv->contents, sizeof(float) * subvolume_size);
+
+  printf("--- State check ---\n");
+  printf("subvolume_size: %u\n", subvolume_size);
+  printf("numIterations: %u\n", numIterations);
+  printf("-- sub-pathvolume --\n");
+  printFloatVolume(&spv);
+  printf("-- sub-diffvolume --\n");
+  printFloatVolume(&sdv);
+  printf("stop\n");
 }
 
 int main() {
@@ -722,17 +726,17 @@ int main() {
 
   srand(time(NULL));
 
-  for(i = 2; i < 100; i++) {
+  /*for(i = 2; i < 100; i++) {
   for(j = 2; j < 100; j++) {
 
-  printf("(%u, %u)\n", i , j);
+  printf("(%u, %u)\n", i , j);*/
 
   // --- PICTURE CREATION SECTION ---------------------------------------------
 
-  /* setRandomPicture(&picture1, 25, 25);
-  setRandomPicture(&picture2, 25, 25); */
-  setRandomPicture(&picture1, i, j);
-  setRandomPicture(&picture2, i, j);
+  setRandomPicture(&picture1, 3, 3);
+  setRandomPicture(&picture2, 3, 3);
+  /*setRandomPicture(&picture1, i, j);
+  setRandomPicture(&picture2, i, j);*/
 
   printf("--- picture1 ---\n");
   /* printPicture(&picture1);
@@ -773,6 +777,12 @@ int main() {
   /* printFloatVolume(&pvs);
   printf("\n"); */
 
+  setBigPathVolumeParallel(&pvp, &dvp, 2);
+  // Print test volume
+  printFloatVolume(&pvp);
+  // Deallocate test volume
+  free(pvp.contents);
+
   setPathVolumeParallel(&pvp, &dvp);
 
   printf("--- path volume parallel ---\n");
@@ -796,6 +806,6 @@ int main() {
   free(pvs.contents);
   free(pvp.contents);
 
-  }
-  }
+  /*}
+  }*/
 }
