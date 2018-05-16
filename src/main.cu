@@ -4,6 +4,8 @@
 #include <time.h>
 // For square root
 #include <math.h>
+// For timing
+#include <sys/time.h>
 
 #include "helperfuncs.h"
 #include "picture.h"
@@ -658,26 +660,46 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   // y, x, z
   unsigned gdim[3];
   unsigned num_blocks, num_iter;
+  // TESTING
+  struct timeval stop, start;
 
+  // TESTING
+  gettimeofday(&start, NULL);
   // Fill cells where x = 0 and z = 0
   setZ0X0(pv, dv);
   // Fill cells where x = 0
   setX0(pv, dv);
   // Fill cells where z = 0
   setZ0(pv, dv);
+  // TESTING
+  gettimeofday(&stop, NULL);
+  printf("base took %lu microseconds\n",
+    stop.tv_usec - start.tv_usec);
 
   fvDataLen = pv->height * pv->width * pv->depth;
 
+  // TESTING
+  gettimeofday(&start, NULL);
   // Allocate space on the GPU
   cudaMalloc((void **) &d_pv, fvDataLen * sizeof(float));
   cudaMalloc((void **) &d_dv, fvDataLen * sizeof(float));
+  // TESTING
+  gettimeofday(&stop, NULL);
+  printf("cudamalloc took %lu microseconds\n",
+    stop.tv_usec - start.tv_usec);
 
+  // TESTING
+  gettimeofday(&start, NULL);
   // Give the diff volume to the GPU
   cudaMemcpy(d_dv, dv->contents, fvDataLen * sizeof(float),
     cudaMemcpyHostToDevice);
   // Give incomplete path volume to the GPU
   cudaMemcpy(d_pv, pv->contents, fvDataLen * sizeof(float),
     cudaMemcpyHostToDevice);
+  // TESTING
+  gettimeofday(&stop, NULL);
+  printf("cudamemcpy begin took %lu microseconds\n",
+    stop.tv_usec - start.tv_usec);
 
   // Kernel stuff
   // 1000 threads per block
@@ -705,6 +727,8 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   dim3 dimGrid(num_blocks);
   dim3 dimBlock(1000);
 
+  // TESTING
+  gettimeofday(&start, NULL);
   for(i = 0; i < num_iter; i++) {
     // Each block will work on its own 10 x 10 x 10 portion
     // Will need info from the previous, so will need 11 x 11 x 11 portion
@@ -713,10 +737,20 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
     setPathVolumeKernel<<<dimGrid, dimBlock>>>(d_pv, d_dv, pv->height,
       pv->width, pv->depth);
   }
+  // TESTING
+  gettimeofday(&stop, NULL);
+  printf("kernels took %lu microseconds\n",
+    stop.tv_usec - start.tv_usec);
 
+  // TESTING
+  gettimeofday(&start, NULL);
   // Copy the path volume back into host memory
   cudaMemcpy(pv->contents, d_pv, fvDataLen * sizeof(float),
     cudaMemcpyDeviceToHost);
+  // TESTING
+  gettimeofday(&stop, NULL);
+  printf("cudamemcpy end took %lu microseconds\n",
+    stop.tv_usec - start.tv_usec);
 
   // Clear memory
   cudaFree(d_dv);
@@ -729,6 +763,8 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume, struct FloatVol
   unsigned subvolume_size, numIterations, i, last_subpathvolume_height;
   float *y0buffer;
   unsigned oldSubdiffvolumeHeight;
+  // TESTING
+  struct timeval stop, start;
 
   // Initialize the empty sub-pathvolume
   setEmptyFloatVolume(&subpathvolume, subvolume_height, bigdiffvolume->width,
@@ -786,8 +822,14 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume, struct FloatVol
       i, sizeof(float) * subdiffvolume.height * subdiffvolume.width *
       subdiffvolume.depth);
 
+    // TESTING
+    gettimeofday(&start, NULL);
     // Complete the path subvolume
     setSmallPathVolumeParallel(&subpathvolume, &subdiffvolume);
+    // TESTING
+    gettimeofday(&stop, NULL);
+    printf("setSmallPathVolumeParallel took %lu microseconds\n",
+      stop.tv_usec - start.tv_usec);
 
     // Copy the contents of the path subvolume to the total volume
     memcpy(bigpathvolume->contents + bigpathvolume->width *
@@ -918,7 +960,7 @@ int main() {
   /*printFloatVolume(&pvs);
   printf("\n");*/
 
-  setBigPathVolumeParallel(&pvp, &dvp, 3);
+  setBigPathVolumeParallel(&pvp, &dvp, 150);
   // Print test volume
   /* printf("-- test volume --\n");
   printFloatVolume(&pvp); */
