@@ -39,9 +39,6 @@ void setDiffVolumeSerial(struct FloatVolume *fv, struct Picture *picture1,
         // Insert the distance between these two colors into the float volume
         *(fv->contents + toIndex3D(i, j, fv->width, k, fv->depth)) =
           diffColor(p1c, p2c);
-
-        /* *(fv->contents + toIndex3D(i, j, fv->width, k, fv->depth)) =
-          toIndex3D(i, j, fv->width, k, fv->depth); */
       }
     }
   }
@@ -214,15 +211,16 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
 }
 
 // Inefficient but working
-void setBigDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
-  struct Picture *picture2, unsigned subpicture_height) {
-  unsigned numIterations, i;
-  struct FloatVolume subfloatvolume;
+void setBigDiffVolumeParallel(struct FloatVolume *bigdiffvolume,
+  struct Picture *picture1, struct Picture *picture2,
+  unsigned subpicture_height) {
+  struct FloatVolume subdiffvolume;
   struct Picture subpicture1, subpicture2;
-  unsigned subpicture_size, subfloatvolume_size;
+  unsigned numIterations, i;
+  unsigned subpicture_size, subdiffvolume_size;
   unsigned last_subpicture_height, last_subpicture_size,
-    last_subfloatvolume_size;
-  int fvDataLen;
+    last_subdiffvolume_size;
+  unsigned bigdiffvolumeDataLen;
 
   // If pictures have differing dimensions, then quit
   if(picture1->width != picture2->width ||
@@ -239,19 +237,16 @@ void setBigDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   }
 
   // Allocate space for the final float volume
-  fv->height = picture1->height;
-  fv->width = picture1->width;
-  fv->depth = picture1->width;
-  fvDataLen = fv->height * fv->width * fv->depth;
-  fv->contents = (float *) malloc(sizeof(float) * fvDataLen);
-
-  // Clear float volume for testing
-  for(i = 0; i < fvDataLen; i++) {
-    *(fv->contents + i) = 0.f;
-  }
+  bigdiffvolume->height = picture1->height;
+  bigdiffvolume->width = picture1->width;
+  bigdiffvolume->depth = picture2->width;
+  bigdiffvolumeDataLen = bigdiffvolume->height * bigdiffvolume->width *
+    bigdiffvolume->depth;
+  bigdiffvolume->contents = (float *) malloc(sizeof(float) *
+    bigdiffvolumeDataLen);
 
   // Allocate space for each of the subpictures
-  // (subfloatvolume will be allocated in setDiffVolumeParallel)
+  // Note: (subdiffvolume will be allocated in setDiffVolumeParallel)
   subpicture1.width = picture1->width;
   subpicture1.height = subpicture_height;
   subpicture1.colors = (float *) malloc(sizeof(float) * subpicture1.width *
@@ -262,13 +257,16 @@ void setBigDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   subpicture2.colors = (float *) malloc(sizeof(float) * subpicture2.width *
     subpicture2.height * 4); // RGBA
 
-  numIterations = picture1->height / subpicture_height +
-    ((picture1->height % subpicture_height) > 0);
   // How many 32 bit floats are in one subpicture
   subpicture_size = subpicture1.height * subpicture1.width * 4; // RGBA
-  // How many 32 bit floats are in one subfloatvolume
-  subfloatvolume_size = subpicture1.height * subpicture1.width *
+  // How many 32 bit floats are in one subdiffvolume
+  subdiffvolume_size = subpicture1.height * subpicture1.width *
     subpicture2.width;
+
+  // Find into how many pieces we will split the workload
+  // Workload separated by height
+  numIterations = picture1->height / subpicture_height +
+    ((picture1->height % subpicture_height) > 0);
 
   // numIterations - 1 because last iteration is a special case
   for(i = 0; i < numIterations - 1; i++) {
@@ -279,21 +277,21 @@ void setBigDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
       subpicture_size * sizeof(float));
 
     // Call the normal diff volume function
-    setDiffVolumeParallel(&subfloatvolume, &subpicture1, &subpicture2);
+    setDiffVolumeParallel(&subdiffvolume, &subpicture1, &subpicture2);
 
     // Copy the results of the subvolume into the final float volume
     // Float volume is allocated inside of this function
-    memcpy(fv->contents + subfloatvolume_size * i, subfloatvolume.contents,
-      subfloatvolume_size * sizeof(float));
+    memcpy(bigdiffvolume->contents + subdiffvolume_size * i,
+      subdiffvolume.contents, subdiffvolume_size * sizeof(float));
 
     // Deallocate the subvolume
-    free(subfloatvolume.contents);
+    free(subdiffvolume.contents);
   }
 
   free(subpicture1.colors);
   free(subpicture2.colors);
 
-  // Take care of case where last iteration must process subpictures with
+  // Take care of case where last iteration may process subpictures with
   //   smaller heights
 
   // Find out heights of subpictures
@@ -311,7 +309,7 @@ void setBigDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
 
   // Recalculate sizes
   last_subpicture_size = subpicture1.height * subpicture1.width * 4; // RGBA
-  last_subfloatvolume_size = subpicture1.height * subpicture1.width *
+  last_subdiffvolume_size = subpicture1.height * subpicture1.width *
     subpicture2.width;
 
   // Load the subpictures
@@ -321,11 +319,11 @@ void setBigDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
     last_subpicture_size * sizeof(float));
 
   // Call the normal diff volume Function
-  setDiffVolumeParallel(&subfloatvolume, &subpicture1, &subpicture2);
+  setDiffVolumeParallel(&subdiffvolume, &subpicture1, &subpicture2);
 
   // Copy the results of the subvolume into the final float volume
-  memcpy(fv->contents + subfloatvolume_size * i, subfloatvolume.contents,
-    last_subfloatvolume_size * sizeof(float));
+  memcpy(bigdiffvolume->contents + subdiffvolume_size * i,
+    subdiffvolume.contents, last_subdiffvolume_size * sizeof(float));
 }
 
 // Fill cells of path volume where x = 0 and y = 0
@@ -539,9 +537,6 @@ __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
   sx = (threadIdx.x % 100) / 10;
 
   // Get the dimensions of the grid
-  /* gz = (width - 1) / 10 + ((width - 1) % 10);
-  gy = (height - 1) / 10 + ((height - 1) % 10);
-  gx = (width - 1) / 10 + ((width - 1) % 10); */
   gz = (width - 1) / 10;
   if((width - 1) % 10) gz++;
   gy = (height - 1) / 10;
@@ -584,10 +579,6 @@ __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
     }
     __syncthreads();
   }
-
-  /* if(vy < height && vx < width && vz < depth) {
-    d_pv[vy * width * depth + vx * depth + vz] = 11.f;
-  } */
 }
 
 // TODO : Currently the easy implementation
@@ -623,9 +614,6 @@ void setPathVolumeParallel(struct FloatVolume *pv, struct FloatVolume *dv) {
   //   at the same time is unlimited
   // TODO : Breaks when one of the pictures' dimensions is not more than or
   //   equal to 2
-  /* gdim[0] = ((pv->height - 1) / 10 + ((pv->height - 1) % 10));
-  gdim[1] = ((pv->width - 1) / 10 + ((pv->width - 1) % 10));
-  gdim[2] = ((pv->depth - 1) / 10 + ((pv->depth - 1) % 10)); */
   gdim[0] = (pv->height - 1) / 10;
   if((pv->height - 1) % 10)
     gdim[0] = gdim[0] + 1;
@@ -642,11 +630,6 @@ void setPathVolumeParallel(struct FloatVolume *pv, struct FloatVolume *dv) {
 
   dim3 dimGrid(num_blocks);
   dim3 dimBlock(1000);
-
-  /* printf("fvDataLen: %u\n", fvDataLen);
-  printf("gdim: [%u, %u, %u]\n", gdim[0], gdim[1], gdim[2]);
-  printf("num_blocks: %u\n", num_blocks);
-  printf("num_iter: %u\n", num_iter); */
 
   for(i = 0; i < num_iter; i++) {
     // Each block will work on its own 10 x 10 x 10 portion
@@ -705,9 +688,6 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   //   at the same time is unlimited
   // TODO : Breaks when one of the pictures' dimensions is not more than or
   //   equal to 2
-  /* gdim[0] = ((pv->height - 1) / 10 + ((pv->height - 1) % 10));
-  gdim[1] = ((pv->width - 1) / 10 + ((pv->width - 1) % 10));
-  gdim[2] = ((pv->depth - 1) / 10 + ((pv->depth - 1) % 10)); */
   gdim[0] = (pv->height - 1) / 10;
   if((pv->height - 1) % 10)
     gdim[0] = gdim[0] + 1;
@@ -724,11 +704,6 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
 
   dim3 dimGrid(num_blocks);
   dim3 dimBlock(1000);
-
-  /* printf("fvDataLen: %u\n", fvDataLen);
-  printf("gdim: [%u, %u, %u]\n", gdim[0], gdim[1], gdim[2]);
-  printf("num_blocks: %u\n", num_blocks);
-  printf("num_iter: %u\n", num_iter); */
 
   for(i = 0; i < num_iter; i++) {
     // Each block will work on its own 10 x 10 x 10 portion
@@ -748,177 +723,140 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   cudaFree(d_pv);
 }
 
-void setBigPathVolumeParallel(struct FloatVolume *pv, struct FloatVolume *dv,
+void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume, struct FloatVolume *bigdiffvolume,
   unsigned subvolume_height) {
-  struct FloatVolume spv, sdv;
-  unsigned subvolume_size, numIterations, i, lastIterHeight;
-  float *y0buf;
-
-  printf("subvolume_height: %u\n", subvolume_height);
+  struct FloatVolume subpathvolume, subdiffvolume;
+  unsigned subvolume_size, numIterations, i, last_subpathvolume_height;
+  float *y0buffer;
+  unsigned oldSubdiffvolumeHeight;
 
   // Initialize the empty sub-pathvolume
-  setEmptyFloatVolume(&spv, subvolume_height, dv->width, dv->depth);
+  setEmptyFloatVolume(&subpathvolume, subvolume_height, bigdiffvolume->width,
+    bigdiffvolume->depth);
   // Initialize the empty sub-diffvolume
-  setEmptyFloatVolume(&sdv, subvolume_height, dv->width, dv->depth);
+  setEmptyFloatVolume(&subdiffvolume, subvolume_height, bigdiffvolume->width,
+    bigdiffvolume->depth);
   // Initialize the empty final path volume
-  setEmptyFloatVolume(pv, dv->height, dv->width, dv->depth);
+  setEmptyFloatVolume(bigpathvolume, bigdiffvolume->height,
+    bigdiffvolume->width, bigdiffvolume->depth);
 
-  // Buffer holding the last y = 0 data
-  y0buf = (float *) malloc(sizeof(float) * spv.width * spv.depth);
+  // Buffer holding the previous y = 0 data of the subvolume
+  y0buffer = (float *) malloc(sizeof(float) * subpathvolume.width *
+    subpathvolume.depth);
 
   // Creating the path volume will be done increments of sub-pathvolumes
-  subvolume_size = subvolume_height * dv->width * dv->depth;
-
-  /*printf("subvolume_height: %u\n", subvolume_height);
-  printf("pv->height - 1: %u\n", pv->height - 1);
-  printf("spv.height - 1: %u\n", spv.height - 1);*/
+  subvolume_size = subvolume_height * bigdiffvolume->width *
+    bigdiffvolume->depth;
 
   // Find out how many sub-pathvolumes we will need to calculate
   // Every subvolume will calculate subvolume_size - 1 portion of the
   //   total subvolume, since the y = 0 of the subvolume is already in the
   //   total subvolume
-  numIterations = (pv->height - 1) / (spv.height - 1);
-  if((pv->height - 1) % (spv.height - 1)) numIterations++;
+  numIterations = (bigpathvolume->height - 1) / (subpathvolume.height - 1);
+  if((bigpathvolume->height - 1) % (subpathvolume.height - 1)) numIterations++;
 
   // Set the very first cell in the final path volume
-  *(pv->contents + 0) = *(dv->contents + 0);
+  *(bigpathvolume->contents + 0) = *(bigdiffvolume->contents + 0);
 
   // Complete x = 0, y = 0
-  setX0Y0(pv, dv);
+  setX0Y0(bigpathvolume, bigdiffvolume);
   // Complete z = 0, y = 0
-  setZ0Y0(pv, dv);
+  setZ0Y0(bigpathvolume, bigdiffvolume);
   // Complete y = 0
-  setY0(pv, dv);
+  setY0(bigpathvolume, bigdiffvolume);
 
   for(i = 0; i < numIterations - 1; i++) {
-  /* for(i = 0; i < numIterations; i++) {
-    // Resize the subvolumes if it is the last iteration
-    if(i == numIterations - 1) {
-      // Get the height of the volume of the last iteration
-      lastIterHeight = ((pv->height - 1) % (spv.height - 1)) + 1;
-
-      // Change dimensions of subvolumes
-      spv.height = lastIterHeight;
-      sdv.height = lastIterHeight;
-
-      // Reallocate each of the subvolumes
-      free(spv.contents);
-      free(sdv.contents);
-      spv.contents = (float *) malloc(sizeof(float) * spv.height * spv.width *
-        spv.depth);
-      sdv.contents = (float *) malloc(sizeof(float) * sdv.height * sdv.width *
-        sdv.depth);
-    } */
-
     // Set the contents of the subvolumes
 
-    /**/// The path subvolume
+    // Begin the path subvolume
     if(i == 0) {
       // Copy y = 0 to sub-pathvolume
-      memcpy(spv.contents, pv->contents, sizeof(float) * spv.width * spv.depth);
+      memcpy(subpathvolume.contents, bigpathvolume->contents, sizeof(float) *
+        subpathvolume.width * subpathvolume.depth);
     } else {
-      // Copy y = spv.height - 1 from sub-pathvolume to y = 0 from
+      // Copy y = subpathvolume.height - 1 from sub-pathvolume to y = 0 from
       // sub-pathvolume
-      memcpy(spv.contents, y0buf, sizeof(float) * spv.width * spv.depth);
-    } /**/
+      memcpy(subpathvolume.contents, y0buffer, sizeof(float) *
+        subpathvolume.width * subpathvolume.depth);
+    }
 
-    // The sub diffvolume
-    //memcpy(sdv.contents, dv->contents + subvolume_size, sizeof(float) *
-    //  subvolume_size);
-    memcpy(sdv.contents, dv->contents + (sdv.height - 1) * sdv.width *
-      sdv.depth * i, sizeof(float) * sdv.height * sdv.width * sdv.depth);
+    // Set the sub diffvolume
+    memcpy(subdiffvolume.contents, bigdiffvolume->contents +
+      (subdiffvolume.height - 1) * subdiffvolume.width * subdiffvolume.depth *
+      i, sizeof(float) * subdiffvolume.height * subdiffvolume.width *
+      subdiffvolume.depth);
 
-    /*printf("--- sub-diffvolume %u ---\n", i);
-    printFloatVolume(&sdv);*/
-
-    /**/ // Complete path subvolume
-    setSmallPathVolumeParallel(&spv, &sdv);
-
-    printf("--- sub-pathvolume %u ---\n", i);
-    printFloatVolume(&spv);
+    // Complete the path subvolume
+    setSmallPathVolumeParallel(&subpathvolume, &subdiffvolume);
 
     // Copy the contents of the path subvolume to the total volume
-    memcpy(pv->contents + pv->width * pv->depth + i *
-      (spv.height - 1) * spv.width * spv.depth,
-      spv.contents + spv.width * spv.depth,
-      sizeof(float) * (spv.height - 1) * spv.width * spv.depth);
+    memcpy(bigpathvolume->contents + bigpathvolume->width *
+      bigpathvolume->depth + i * (subpathvolume.height - 1) *
+      subpathvolume.width * subpathvolume.depth, subpathvolume.contents +
+      subpathvolume.width * subpathvolume.depth, sizeof(float) *
+      (subpathvolume.height - 1) * subpathvolume.width * subpathvolume.depth);
 
     // Copy the contents at y = max y to y = 0 within the path subvolume
-    memcpy(y0buf, spv.contents + (spv.height - 1) * spv.width * spv.depth,
-      sizeof(float) * spv.width * spv.depth); /**/
-    printf("spv.height: %u\n", spv.height);
-
-    unsigned j;
-    for(j = 0; j < spv.width * spv.depth; j++) {
-      printf("y0[%u]: %f\n", j, *(y0buf + j));
-    }
+    memcpy(y0buffer, subpathvolume.contents + (subpathvolume.height - 1) *
+      subpathvolume.width * subpathvolume.depth, sizeof(float) *
+      subpathvolume.width * subpathvolume.depth);
   }
 
-  // Get the height of the volume of the last iteration
-  if((pv->height - 1) % (spv.height - 1)) {
+  // Get the height of the volume of the final iteration
+  if((bigpathvolume->height - 1) % (subpathvolume.height - 1)) {
     // If we need to process a smaller sub-pathvolume, then change the height
-    lastIterHeight = ((pv->height - 1) % (spv.height - 1)) + 1;
+    last_subpathvolume_height = ((bigpathvolume->height - 1) %
+      (subpathvolume.height - 1)) + 1;
   } else {
-    lastIterHeight = spv.height;
+    last_subpathvolume_height = subpathvolume.height;
   }
-  printf("lastIterHeight: %u\n", lastIterHeight);
 
-  unsigned oldSubDiffVolumeHeight = sdv.height;
+  // This will allow us to index into the large float volume;
+  // need to keep track of where the last subvolume will copy into
+  oldSubdiffvolumeHeight = subdiffvolume.height;
 
   // Reallocate sub-pathvolume and sub-diffvolume
-  free(spv.contents);
-  free(sdv.contents);
-  setEmptyFloatVolume(&spv, lastIterHeight, dv->width, dv->depth);
-  setEmptyFloatVolume(&sdv, lastIterHeight, dv->width, dv->depth);
+  free(subpathvolume.contents);
+  free(subdiffvolume.contents);
+  setEmptyFloatVolume(&subpathvolume, last_subpathvolume_height,
+    bigdiffvolume->width, bigdiffvolume->depth);
+  setEmptyFloatVolume(&subdiffvolume, last_subpathvolume_height,
+    bigdiffvolume->width, bigdiffvolume->depth);
 
   // Set the contents of the subvolumes
 
   // The path subvolume
   if(i == 0) {
     // Copy y = 0 to sub-pathvolume
-    memcpy(spv.contents, pv->contents, sizeof(float) * spv.width * spv.depth);
+    memcpy(subpathvolume.contents, bigpathvolume->contents, sizeof(float) *
+      subpathvolume.width * subpathvolume.depth);
   } else {
-    // Copy y = spv.height - 1 from sub-pathvolume to y = 0 from
+    // Copy y = subpathvolume.height - 1 from sub-pathvolume to y = 0 from
     // sub-pathvolume
-    memcpy(spv.contents, y0buf, sizeof(float) * spv.width * spv.depth);
+    memcpy(subpathvolume.contents, y0buffer, sizeof(float) *
+      subpathvolume.width * subpathvolume.depth);
   }
 
   // The sub diffvolume
-  //memcpy(sdv.contents, dv->contents + subvolume_size, sizeof(float) *
-  //  subvolume_size);
-  //memcpy(sdv.contents, dv->contents + (sdv.height - 1) * sdv.width *
-  //  sdv.depth * i, sizeof(float) * sdv.height * sdv.width * sdv.depth);
-  memcpy(sdv.contents, dv->contents + (oldSubDiffVolumeHeight - 1) * sdv.width
-    * sdv.depth * i, sizeof(float) * sdv.height * sdv.width * sdv.depth);
-
-  /* printf("--- State check ---\n");
-  printf("subvolume_size: %u\n", subvolume_size);
-  printf("numIterations: %u\n", numIterations);
-  printf("-- sub-pathvolume --\n");
-  printFloatVolume(&spv);
-  printf("-- sub-diffvolume --\n");
-  printFloatVolume(&sdv); */
+  memcpy(subdiffvolume.contents, bigdiffvolume->contents +
+      (oldSubdiffvolumeHeight - 1) * subdiffvolume.width *
+      subdiffvolume.depth * i, sizeof(float) * subdiffvolume.height *
+      subdiffvolume.width * subdiffvolume.depth);
 
   // Complete path subvolume
-  setSmallPathVolumeParallel(&spv, &sdv);
-
-  printf("--- sub-pathvolume %u ---\n", i);
-    printFloatVolume(&spv);
+  setSmallPathVolumeParallel(&subpathvolume, &subdiffvolume);
 
   // Copy the contents of the path subvolume to the total volume
-  /*memcpy(pv->contents + pv->width * pv->depth + i *
-    (spv.height - 1) * spv.width * spv.depth,
-    spv.contents + spv.width * spv.depth,
-    sizeof(float) * (spv.height - 1) * spv.width * spv.depth);*/
-  memcpy(pv->contents + pv->width * pv->depth + i *
-    (oldSubDiffVolumeHeight - 1) * spv.width * spv.depth,
-    spv.contents + spv.width * spv.depth,
-    sizeof(float) * (spv.height - 1) * spv.width * spv.depth);
+  memcpy(bigpathvolume->contents + bigpathvolume->width *
+    bigpathvolume->depth + i * (oldSubdiffvolumeHeight - 1) *
+    subpathvolume.width * subpathvolume.depth, subpathvolume.contents +
+    subpathvolume.width * subpathvolume.depth, sizeof(float) *
+    (subpathvolume.height - 1) * subpathvolume.width * subpathvolume.depth);
 
   // Deallocation
-  free(y0buf);
-  free(spv.contents);
-  free(sdv.contents);
+  free(y0buffer);
+  free(subpathvolume.contents);
+  free(subdiffvolume.contents);
 }
 
 int main() {
@@ -929,8 +867,8 @@ int main() {
 
   srand(time(NULL));
 
-  for(i = 6; i < 7; i++) {
-  for(j = 6; j < 7; j++) {
+  for(i = 200; i < 205; i++) {
+  for(j = 200; j < 205; j++) {
 
   printf("(%u, %u)\n", i , j);
 
@@ -958,7 +896,7 @@ int main() {
   printf("\n"); */
 
   // setDiffVolumeParallel(&dvp, &picture1, &picture2);
-  setBigDiffVolumeParallel(&dvp, &picture1, &picture2, 2);
+  setBigDiffVolumeParallel(&dvp, &picture1, &picture2, 200);
 
   printf("--- diff volume parallel ---\n");
   /* printFloatVolume(&dvp);
@@ -977,8 +915,8 @@ int main() {
   setPathVolumeSerial(&pvs, &dvs);
 
   printf("--- path volume serial ---\n");
-  printFloatVolume(&pvs);
-  printf("\n");
+  /*printFloatVolume(&pvs);
+  printf("\n");*/
 
   setBigPathVolumeParallel(&pvp, &dvp, 3);
   // Print test volume
