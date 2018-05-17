@@ -7,6 +7,7 @@
 // For timing
 #include <sys/time.h>
 
+#include "pathvolume.h"
 #include "helperfuncs.h"
 #include "picture.h"
 #include "floatvolume.h"
@@ -328,156 +329,14 @@ void setBigDiffVolumeParallel(struct FloatVolume *bigdiffvolume,
     subdiffvolume.contents, last_subdiffvolume_size * sizeof(float));
 }
 
-// Fill cells of path volume where x = 0 and y = 0
-void setX0Y0(struct FloatVolume *pv, struct FloatVolume *dv) {
-  unsigned i;
-  for(i = 1; i < pv->depth; i++) {
-    *(pv->contents + toIndex3D(0, 0, pv->width, i, pv->depth)) =
-      *(dv->contents + toIndex3D(0, 0, pv->width, i, pv->depth)) +
-      *(pv->contents + toIndex3D(0, 0, pv->width, i - 1, pv->depth));
-  }
-}
-
-// Fill cells where z = 0 and y = 0
-void setZ0Y0(struct FloatVolume *pv, struct FloatVolume *dv) {
-  unsigned i;
-  for(i = 1; i < pv->width; i++) {
-    *(pv->contents + toIndex3D(0, i, pv->width, 0, pv->depth)) =
-      *(dv->contents + toIndex3D(0, i, pv->width, 0, pv->depth)) +
-      *(pv->contents + toIndex3D(0, i - 1, pv->width, 0, pv->depth));
-  }
-}
-
-// Fill cells where z = 0 and x = 0
-void setZ0X0(struct FloatVolume *pv, struct FloatVolume *dv) {
-  unsigned i;
-  for(i = 1; i < pv->height; i++) {
-    *(pv->contents + toIndex3D(i, 0, pv->width, 0, pv->depth)) =
-      *(dv->contents + toIndex3D(i, 0, pv->width, 0, pv->depth)) +
-      *(pv->contents + toIndex3D(i - 1, 0, pv->width, 0, pv->depth));
-  }
-}
-
-// Fill cells where x = 0, assuming Z0X0 and Z0Y0 are filled
-void setX0(struct FloatVolume *pv, struct FloatVolume *dv) {
-  float candidates2D[3], minCandidate;
-  unsigned i, j;
-  for(i = 1; i < pv->height; i++) {
-    for(j = 1; j < pv->depth; j++) {
-      candidates2D[0] =
-        *(pv->contents + toIndex3D(i, 0, pv->width, j - 1, pv->depth));
-      candidates2D[1] =
-        *(pv->contents + toIndex3D(i - 1, 0, pv->width, j - 1, pv->depth));
-      candidates2D[2] =
-        *(pv->contents + toIndex3D(i - 1, 0, pv->width, j, pv->depth));
-
-      minCandidate = candidates2D[0];
-      if(candidates2D[1] < minCandidate)
-        minCandidate = candidates2D[1];
-      if(candidates2D[2] < minCandidate)
-        minCandidate = candidates2D[2];
-
-      *(pv->contents + toIndex3D(i, 0, pv->width, j, pv->depth)) =
-        *(dv->contents + toIndex3D(i, 0, pv->width, j, pv->depth)) +
-        minCandidate;
-    }
-  }
-}
-
-// Fill cells where y = 0, assuming Z0Y0 and X0Y0 are filled
-void setY0(struct FloatVolume *pv, struct FloatVolume *dv) {
-  float candidates2D[3], minCandidate;
-  unsigned i, j;
-
-  for(i = 1; i < pv->width; i++) {
-    for(j = 1; j < pv->depth; j++) {
-      candidates2D[0] =
-        *(pv->contents + toIndex3D(0, i, pv->width, j - 1, pv->depth));
-      candidates2D[1] =
-        *(pv->contents + toIndex3D(0, i - 1, pv->width, j - 1, pv->depth));
-      candidates2D[2] =
-        *(pv->contents + toIndex3D(0, i - 1, pv->width, j, pv->depth));
-
-      minCandidate = candidates2D[0];
-      if(candidates2D[1] < minCandidate)
-        minCandidate = candidates2D[1];
-      if(candidates2D[2] < minCandidate)
-        minCandidate = candidates2D[2];
-
-      *(pv->contents + toIndex3D(0, i, pv->width, j, pv->depth)) =
-        *(dv->contents + toIndex3D(0, i, pv->width, j, pv->depth)) +
-        minCandidate;
-    }
-  }
-}
-
-// Fill cells where z = 0, assuming Z0Y0 and Z0X0 are filled
-void setZ0(struct FloatVolume *pv, struct FloatVolume *dv) {
-  float candidates2D[3], minCandidate;
-  unsigned i, j;
-
-  for(i = 1; i < pv->height; i++) {
-    for(j = 1; j < pv->width; j++) {
-      candidates2D[0] =
-        *(pv->contents + toIndex3D(i, j - 1, pv->width, 0, pv->depth));
-      candidates2D[1] =
-        *(pv->contents + toIndex3D(i - 1, j - 1, pv->width, 0, pv->depth));
-      candidates2D[2] =
-        *(pv->contents + toIndex3D(i - 1, j, pv->width, 0, pv->depth));
-
-      minCandidate = candidates2D[0];
-      if(candidates2D[1] < minCandidate)
-        minCandidate = candidates2D[1];
-      if(candidates2D[2] < minCandidate)
-        minCandidate = candidates2D[2];
-
-      *(pv->contents + toIndex3D(i, j, pv->width, 0, pv->depth)) =
-        *(dv->contents + toIndex3D(i, j, pv->width, 0, pv->depth)) +
-        minCandidate;
-    }
-  }
-}
-
-// Function too thicc
-void pathVolumeInit(struct FloatVolume *pv, struct FloatVolume *dv) {
-  int fvDataLen;
-  unsigned i, j;
-  float candidates2D[3], minCandidate;
-
-  // Create the FloatVolume
-  pv->height = dv->height;
-  pv->width = dv->width;
-  pv->depth = dv->depth;
-
-  fvDataLen = pv->height * pv->width * pv->depth;
-
-  pv->contents = (float *) malloc(sizeof(float) * fvDataLen);
-
-  // TESTING : Set all cells in fv2 to 0
-  for(i = 0; i < pv->depth * pv->width * pv->height; i++) {
-    *(pv->contents + i) = 0.f;
-  }
-
-  // Set the first cell
-  *(pv->contents + 0) = *(dv->contents + 0);
-
-  // Fill cells where x = 0 and y = 0
-  setX0Y0(pv, dv);
-  // Fill cells where z = 0 and y = 0
-  setZ0Y0(pv, dv);
-  // Fill cells where z = 0 and x = 0
-  setZ0X0(pv, dv);
-  // Fill cells where x = 0
-  setX0(pv, dv);
-  // Fill cells where y = 0
-  setY0(pv, dv);
-  // Fill cells where z = 0
-  setZ0(pv, dv);
-}
-
 void setPathVolumeSerial(struct FloatVolume *pv, struct FloatVolume *dv) {
   unsigned i, j, k, l;
   float candidates3D[7], minCandidate;
+  // TESTING
+  struct timeval stop, start;
+
+  // TESTING
+  gettimeofday(&start, NULL);
 
   pathVolumeInit(pv, dv);
 
@@ -514,6 +373,11 @@ void setPathVolumeSerial(struct FloatVolume *pv, struct FloatVolume *dv) {
       }
     }
   }
+
+  // TESTING
+  gettimeofday(&stop, NULL);
+  printf("single thread took %lu microseconds\n",
+    stop.tv_usec - start.tv_usec);
 }
 
 // Height, width, and height refer to the dimensions of the float volume
@@ -660,46 +524,26 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   // y, x, z
   unsigned gdim[3];
   unsigned num_blocks, num_iter;
-  // TESTING
-  struct timeval stop, start;
 
-  // TESTING
-  gettimeofday(&start, NULL);
   // Fill cells where x = 0 and z = 0
   setZ0X0(pv, dv);
   // Fill cells where x = 0
   setX0(pv, dv);
   // Fill cells where z = 0
   setZ0(pv, dv);
-  // TESTING
-  gettimeofday(&stop, NULL);
-  printf("base took %lu microseconds\n",
-    stop.tv_usec - start.tv_usec);
 
   fvDataLen = pv->height * pv->width * pv->depth;
 
-  // TESTING
-  gettimeofday(&start, NULL);
   // Allocate space on the GPU
   cudaMalloc((void **) &d_pv, fvDataLen * sizeof(float));
   cudaMalloc((void **) &d_dv, fvDataLen * sizeof(float));
-  // TESTING
-  gettimeofday(&stop, NULL);
-  printf("cudamalloc took %lu microseconds\n",
-    stop.tv_usec - start.tv_usec);
 
-  // TESTING
-  gettimeofday(&start, NULL);
   // Give the diff volume to the GPU
   cudaMemcpy(d_dv, dv->contents, fvDataLen * sizeof(float),
     cudaMemcpyHostToDevice);
   // Give incomplete path volume to the GPU
   cudaMemcpy(d_pv, pv->contents, fvDataLen * sizeof(float),
     cudaMemcpyHostToDevice);
-  // TESTING
-  gettimeofday(&stop, NULL);
-  printf("cudamemcpy begin took %lu microseconds\n",
-    stop.tv_usec - start.tv_usec);
 
   // Kernel stuff
   // 1000 threads per block
@@ -727,8 +571,6 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   dim3 dimGrid(num_blocks);
   dim3 dimBlock(1000);
 
-  // TESTING
-  gettimeofday(&start, NULL);
   for(i = 0; i < num_iter; i++) {
     // Each block will work on its own 10 x 10 x 10 portion
     // Will need info from the previous, so will need 11 x 11 x 11 portion
@@ -737,34 +579,27 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
     setPathVolumeKernel<<<dimGrid, dimBlock>>>(d_pv, d_dv, pv->height,
       pv->width, pv->depth);
   }
-  // TESTING
-  gettimeofday(&stop, NULL);
-  printf("kernels took %lu microseconds\n",
-    stop.tv_usec - start.tv_usec);
 
-  // TESTING
-  gettimeofday(&start, NULL);
   // Copy the path volume back into host memory
   cudaMemcpy(pv->contents, d_pv, fvDataLen * sizeof(float),
     cudaMemcpyDeviceToHost);
-  // TESTING
-  gettimeofday(&stop, NULL);
-  printf("cudamemcpy end took %lu microseconds\n",
-    stop.tv_usec - start.tv_usec);
 
   // Clear memory
   cudaFree(d_dv);
   cudaFree(d_pv);
 }
 
-void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume, struct FloatVolume *bigdiffvolume,
-  unsigned subvolume_height) {
+void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
+  struct FloatVolume *bigdiffvolume, unsigned subvolume_height) {
   struct FloatVolume subpathvolume, subdiffvolume;
   unsigned subvolume_size, numIterations, i, last_subpathvolume_height;
   float *y0buffer;
   unsigned oldSubdiffvolumeHeight;
   // TESTING
   struct timeval stop, start;
+
+  // TESTING
+  gettimeofday(&start, NULL);
 
   // Initialize the empty sub-pathvolume
   setEmptyFloatVolume(&subpathvolume, subvolume_height, bigdiffvolume->width,
@@ -822,14 +657,8 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume, struct FloatVol
       i, sizeof(float) * subdiffvolume.height * subdiffvolume.width *
       subdiffvolume.depth);
 
-    // TESTING
-    gettimeofday(&start, NULL);
     // Complete the path subvolume
     setSmallPathVolumeParallel(&subpathvolume, &subdiffvolume);
-    // TESTING
-    gettimeofday(&stop, NULL);
-    printf("setSmallPathVolumeParallel took %lu microseconds\n",
-      stop.tv_usec - start.tv_usec);
 
     // Copy the contents of the path subvolume to the total volume
     memcpy(bigpathvolume->contents + bigpathvolume->width *
@@ -899,6 +728,11 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume, struct FloatVol
   free(y0buffer);
   free(subpathvolume.contents);
   free(subdiffvolume.contents);
+
+  // TESTING
+  gettimeofday(&stop, NULL);
+  printf("cuda took %lu microseconds\n",
+    stop.tv_usec - start.tv_usec);
 }
 
 int main() {
@@ -909,8 +743,8 @@ int main() {
 
   srand(time(NULL));
 
-  for(i = 200; i < 205; i++) {
-  for(j = 200; j < 205; j++) {
+  for(i = 300; i < 301; i++) {
+  for(j = 300; j < 301; j++) {
 
   printf("(%u, %u)\n", i , j);
 
@@ -938,7 +772,7 @@ int main() {
   printf("\n"); */
 
   // setDiffVolumeParallel(&dvp, &picture1, &picture2);
-  setBigDiffVolumeParallel(&dvp, &picture1, &picture2, 200);
+  setBigDiffVolumeParallel(&dvp, &picture1, &picture2, 300);
 
   printf("--- diff volume parallel ---\n");
   /* printFloatVolume(&dvp);
