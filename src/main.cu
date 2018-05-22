@@ -735,7 +735,78 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
     stop.tv_usec - start.tv_usec);
 }
 
+float vectorLength(float ax, float ay, float az,
+  float bx, float by, float bz) {
+  return sqrtf(
+    powf(ax - bx, 2.f) +
+    powf(ay - by, 2.f) +
+    powf(az - bz, 2.f)
+  );
+}
+
+// Normalize three floats in-place
+void normalize(float *x, float *y, float *z) {
+  float len = vectorLength(
+    0.f, 0.f, 0.f,
+    *x, *y, *z
+  );
+
+  if(len == 0) {
+    *x = 0;
+    *y = 0;
+    *z = 0;
+  }
+
+  *x = *x / len;
+  *y = *y / len;
+  *z = *z / len;
+}
+
+float getPathDeviationSerial(struct FloatVolume *pathVolume) {
+  unsigned x, y, z;
+  float fx, fy, fz;
+  float pathDeviation, tileDeviation;
+  unsigned pathLength;
+
+  x = pathVolume->width - 1;
+  y = pathVolume->height - 1;
+  z = pathVolume->depth - 1;
+
+  pathDeviation = 0.f;
+  pathLength = 1;
+
+  while(!(x == 0 && y == 0 && z == 0)) {
+    // Add the current path tile's deviation to path deviation
+    fx = (float) x;
+    fy = (float) y;
+    fz = (float) z;
+    normalize(&fx, &fy, &fz);
+
+    // Calculate this tile's deviation
+    tileDeviation = vectorLength(fx, fy, fz, 1.f, 1.f, 1.f);
+    // Modify the average
+    pathDeviation = (pathDeviation + tileDeviation / (float) pathLength) *
+      ((float) pathLength / ((float) pathLength + 1));
+
+    // Calculate which tile to go to next
+  }
+
+  return 1.f;
+}
+
 int main() {
+
+  float a, b, c;
+  a = 3.f;
+  b = 4.f;
+  c = 5.f;
+  printf("vec: [%f, %f, %f]\n", a, b, c);
+  printf("len: %f\n", vectorLength(a, b, c, 0.f, 0.f, 0.f));
+  normalize(&a, &b, &c);
+  printf("nor: [%f, %f, %f]\n", a, b, c);
+
+  return;
+
   struct Picture picture1, picture2;
   struct FloatVolume dvs, dvp;
   struct FloatVolume pvs, pvp;
