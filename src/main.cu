@@ -764,49 +764,257 @@ void normalize(float *x, float *y, float *z) {
 
 float getPathDeviationSerial(struct FloatVolume *pathVolume) {
   unsigned x, y, z;
-  float fx, fy, fz;
+  float fnx, fny, fnz;
+  float bnx, bny, bnz;
   float pathDeviation, tileDeviation;
-  unsigned pathLength;
+  unsigned pathLength, i;
+  float candidates3D[7], minCandidate;
+  unsigned minCandidateIndex;
+  float unitdiagonal[3];
 
   x = pathVolume->width - 1;
   y = pathVolume->height - 1;
   z = pathVolume->depth - 1;
 
   pathDeviation = 0.f;
-  pathLength = 1;
+  pathLength = 0;
+
+  // Calculate the unit diagonal
+  unitdiagonal[0] = x;
+  unitdiagonal[1] = y;
+  unitdiagonal[2] = z;
+  normalize(&unitdiagonal[0], &unitdiagonal[1], &unitdiagonal[2]);
+
+  printf("Unit diagonal: [%f, %f, %f]\n", unitdiagonal[0], unitdiagonal[1],
+    unitdiagonal[2]);
 
   while(!(x == 0 && y == 0 && z == 0)) {
+    printf("Path: [%u, %u, %u]\n", x ,y, z);
+
     // Add the current path tile's deviation to path deviation
-    fx = (float) x;
-    fy = (float) y;
-    fz = (float) z;
-    normalize(&fx, &fy, &fz);
+
+    // Get the positive vector
+    fnx = (float) x;
+    fny = (float) y;
+    fnz = (float) z;
+    normalize(&fnx, &fny, &fnz);
+
+    // Get the negative vector
+    bnx = (float) x - (pathVolume->width - 1);
+    bny = (float) y - (pathVolume->height - 1);
+    bnz = (float) z - (pathVolume->depth - 1);
+    normalize(&bnx, &bny, &bnz);
 
     // Calculate this tile's deviation
-    tileDeviation = vectorLength(fx, fy, fz, 1.f, 1.f, 1.f);
+    //tileDeviation = vectorLength(nx, ny, nz, .577f, .577f, .577f);
+    /*tileDeviation = vectorLength(fnx, fny, fnz, unitdiagonal[0],
+      unitdiagonal[1], unitdiagonal[2]);*/
+    tileDeviation = (vectorLength(fnx, fny, fnz, unitdiagonal[0],
+      unitdiagonal[1], unitdiagonal[2]) + vectorLength(bnx, bny, bnz,
+      -unitdiagonal[0], -unitdiagonal[1], -unitdiagonal[2])) / 2.f;
     // Modify the average
-    pathDeviation = (pathDeviation + tileDeviation / (float) pathLength) *
-      ((float) pathLength / ((float) pathLength + 1));
+    if(pathLength == 0) {
+      pathDeviation = 0;
+    } else {
+      pathDeviation = (pathDeviation + tileDeviation / (float) pathLength) *
+        ((float) pathLength / ((float) pathLength + 1));
+    }
+
+    // Take this tile into account
+    pathLength = pathLength + 1;
 
     // Calculate which tile to go to next
+    // TODO : fat
+    if(x == 0 && y == 0) {
+      z = z - 1;
+    } else if(x == 0 && z == 0) {
+      y = y - 1;
+    } else if(y == 0 && z == 0) {
+      x = x - 1;
+    } else if(x == 0) {
+      candidates3D[0] = *(pathVolume->contents + toIndex3D(y - 1, 0,
+        pathVolume->width, z - 1, pathVolume->depth));
+      candidates3D[1] = *(pathVolume->contents + toIndex3D(y, 0,
+        pathVolume->width, z - 1, pathVolume->depth));
+      candidates3D[2] = *(pathVolume->contents + toIndex3D(y - 1, 0,
+        pathVolume->width, z, pathVolume->depth));
+
+      minCandidate = candidates3D[0];
+      minCandidateIndex = 0;
+
+      for(i = 1; i < 3; i++) {
+        if(candidates3D[i] < minCandidate) {
+          minCandidate = candidates3D[i];
+          minCandidateIndex = i;
+        }
+      }
+
+      if(minCandidateIndex == 0) {
+        y = y - 1;
+        z = z - 1;
+      } else if(minCandidateIndex == 1) {
+        z = z - 1;
+      } else if(minCandidateIndex == 2) {
+        y = y - 1;
+      }
+    } else if(y == 0) {
+      candidates3D[0] = *(pathVolume->contents + toIndex3D(0, x - 1,
+        pathVolume->width, z - 1, pathVolume->depth));
+      candidates3D[1] = *(pathVolume->contents + toIndex3D(0, x,
+        pathVolume->width, z - 1, pathVolume->depth));
+      candidates3D[2] = *(pathVolume->contents + toIndex3D(0, x - 1,
+        pathVolume->width, z, pathVolume->depth));
+
+      minCandidate = candidates3D[0];
+      minCandidateIndex = 0;
+
+      for(i = 1; i < 3; i++) {
+        if(candidates3D[i] < minCandidate) {
+          minCandidate = candidates3D[i];
+          minCandidateIndex = i;
+        }
+      }
+
+      if(minCandidateIndex == 0) {
+        x = x - 1;
+        z = z - 1;
+      } else if(minCandidateIndex == 1) {
+        z = z - 1;
+      } else if(minCandidateIndex == 2) {
+        x = x - 1;
+      }
+    } else if(z == 0) {
+      candidates3D[0] = *(pathVolume->contents + toIndex3D(y - 1, x - 1,
+        pathVolume->width, 0, pathVolume->depth));
+      candidates3D[1] = *(pathVolume->contents + toIndex3D(y - 1, x,
+        pathVolume->width, 0, pathVolume->depth));
+      candidates3D[2] = *(pathVolume->contents + toIndex3D(y, x - 1,
+        pathVolume->width, 0, pathVolume->depth));
+
+      minCandidate = candidates3D[0];
+      minCandidateIndex = 0;
+
+      for(i = 1; i < 3; i++) {
+        if(candidates3D[i] < minCandidate) {
+          minCandidate = candidates3D[i];
+          minCandidateIndex = i;
+        }
+      }
+
+      if(minCandidateIndex == 0) {
+        y = y - 1;
+        x = x - 1;
+      } else if(minCandidateIndex == 1) {
+        y = y - 1;
+      } else if(minCandidateIndex == 2) {
+        x = x - 1;
+      }
+    } else {
+      candidates3D[0] = *(pathVolume->contents + toIndex3D(y - 1, x - 1,
+        pathVolume->width, z - 1, pathVolume->depth));
+      candidates3D[1] = *(pathVolume->contents + toIndex3D(y - 1, x - 1,
+        pathVolume->width, z, pathVolume->depth));
+      candidates3D[2] = *(pathVolume->contents + toIndex3D(y - 1, x,
+        pathVolume->width, z - 1, pathVolume->depth));
+      candidates3D[3] = *(pathVolume->contents + toIndex3D(y - 1, x,
+        pathVolume->width, z, pathVolume->depth));
+      candidates3D[4] = *(pathVolume->contents + toIndex3D(y, x - 1,
+        pathVolume->width, z - 1, pathVolume->depth));
+      candidates3D[5] = *(pathVolume->contents + toIndex3D(y, x - 1,
+        pathVolume->width, z, pathVolume->depth));
+      candidates3D[6] = *(pathVolume->contents + toIndex3D(y, x,
+        pathVolume->width, z - 1, pathVolume->depth));
+
+      minCandidate = candidates3D[0];
+      minCandidateIndex = 0;
+
+      for(i = 1; i < 7; i++) {
+        if(candidates3D[i] < minCandidate) {
+          minCandidate = candidates3D[i];
+          minCandidateIndex = i;
+        }
+      }
+
+      if(minCandidateIndex == 0) {
+        y = y - 1;
+        x = x - 1;
+        z = z - 1;
+      } else if(minCandidateIndex == 1) {
+        y = y - 1;
+        x = x - 1;
+        z = z - 0;
+      } else if(minCandidateIndex == 2) {
+        y = y - 1;
+        x = x - 0;
+        z = z - 1;
+      } else if(minCandidateIndex == 3) {
+        y = y - 1;
+        x = x - 0;
+        z = z - 0;
+      } else if(minCandidateIndex == 4) {
+        y = y - 0;
+        x = x - 1;
+        z = z - 1;
+      } else if(minCandidateIndex == 5) {
+        y = y - 0;
+        x = x - 1;
+        z = z - 0;
+      } else if(minCandidateIndex == 6) {
+        y = y - 0;
+        x = x - 0;
+        z = z - 1;
+      }
+    }
   }
 
-  return 1.f;
+  return pathDeviation;
+}
+
+void getTestFloatVolume(struct FloatVolume *fv) {
+  unsigned i, j, k;
+
+  fv->width = 4;
+  fv->height = 4;
+  fv->depth = 4;
+
+  fv->contents = (float *) malloc(sizeof(float) * 4 * 4 * 4);
+
+  // Set all elements in the float volume to 9.f
+  for(i = 0; i < fv->height; i++) {
+    for(j = 0; j < fv->width; j++) {
+      for(k = 0; k < fv->depth; k++) {
+        *(fv->contents + toIndex3D(i, j, fv->width, k, fv->depth)) = 9.f;
+      }
+    }
+  }
+
+  // Set all of the corner stuff to 0.f
+  for(i = 0; i < fv->height; i++) {
+    for(j = 0; j < fv->width; j++) {
+      for(k = 0; k < fv->depth; k++) {
+        if(j == fv->width - 1 && i == fv->height - 1) {
+          *(fv->contents + toIndex3D(i, j, fv->width, k, fv->depth)) = 0.f;
+        }
+        /*if(k == 0 && j == fv->width - 1) {
+          *(fv->contents + toIndex3D(i, j, fv->width, k, fv->depth)) = 0.f;
+        }
+        if(i == 0 && k == 0) {
+          *(fv->contents + toIndex3D(i, j, fv->width, k, fv->depth)) = 0.f;
+        }*/
+
+        //TESTING
+        /*if(j == fv->width - 1) {
+          *(fv->contents + toIndex3D(i, j, fv->width, k, fv->depth)) = 0.f;
+        }*/
+        if(k == 0) {
+          *(fv->contents + toIndex3D(i, j, fv->width, k, fv->depth)) = 0.f;
+        }
+      }
+    }
+  }
 }
 
 int main() {
-
-  float a, b, c;
-  a = 3.f;
-  b = 4.f;
-  c = 5.f;
-  printf("vec: [%f, %f, %f]\n", a, b, c);
-  printf("len: %f\n", vectorLength(a, b, c, 0.f, 0.f, 0.f));
-  normalize(&a, &b, &c);
-  printf("nor: [%f, %f, %f]\n", a, b, c);
-
-  return;
-
   struct Picture picture1, picture2;
   struct FloatVolume dvs, dvp;
   struct FloatVolume pvs, pvp;
@@ -814,8 +1022,8 @@ int main() {
 
   srand(time(NULL));
 
-  for(i = 300; i < 301; i++) {
-  for(j = 300; j < 301; j++) {
+  for(i = 57; i < 58; i++) {
+  for(j = 57; j < 58; j++) {
 
   printf("(%u, %u)\n", i , j);
 
@@ -843,7 +1051,7 @@ int main() {
   printf("\n"); */
 
   // setDiffVolumeParallel(&dvp, &picture1, &picture2);
-  setBigDiffVolumeParallel(&dvp, &picture1, &picture2, 300);
+  setBigDiffVolumeParallel(&dvp, &picture1, &picture2, 20);
 
   printf("--- diff volume parallel ---\n");
   /* printFloatVolume(&dvp);
@@ -865,7 +1073,7 @@ int main() {
   /*printFloatVolume(&pvs);
   printf("\n");*/
 
-  setBigPathVolumeParallel(&pvp, &dvp, 150);
+  setBigPathVolumeParallel(&pvp, &dvp, 20);
   // Print test volume
   /* printf("-- test volume --\n");
   printFloatVolume(&pvp); */
@@ -875,8 +1083,8 @@ int main() {
   //setPathVolumeParallel(&pvp, &dvp);
 
   printf("--- path volume parallel ---\n");
-  /* printFloatVolume(&pvp);
-  printf("\n"); */
+  /*printFloatVolume(&pvp);
+  printf("\n");*/
 
   printf("--- path volume comparison ---\n");
   res = compareFloatVolumes(&pvs, &pvp);
@@ -885,6 +1093,10 @@ int main() {
     exit(1);
   //printf("%d\n", compareFloatVolumes(&pvs, &pvp));
   printf("\n");
+
+  // --- PATH DEVIATION -------------------------------------------------------
+  printf("--- path deviation serial ---\n");
+  printf("%f\n", getPathDeviationSerial(&pvs));
 
   // --- DEALLOCATION ---------------------------------------------------------
 
@@ -897,4 +1109,12 @@ int main() {
 
   }
   }
+
+  // Create test float volume
+  /*struct FloatVolume tv;
+  getTestFloatVolume(&tv);
+  printf("--- test float volume ---\n");
+  printFloatVolume(&tv);
+  printf("--- path deviation serial ---\n");
+  printf("%f\n", getPathDeviationSerial(&tv));*/
 }
