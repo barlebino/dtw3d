@@ -3,8 +3,8 @@
 #include "floatvolume.h"
 #include "helperfuncs.h"
 
-void setEmptyFloatVolume(struct FloatVolume *fv, unsigned width,
-  unsigned height, unsigned depth) {
+void setEmptyFloatVolume(struct FloatVolume *fv, unsigned height,
+  unsigned width, unsigned depth) {
   unsigned i;
 
   fv->width = width;
