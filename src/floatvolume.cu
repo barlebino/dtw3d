@@ -3,6 +3,7 @@
 #include "floatvolume.h"
 #include "helperfuncs.h"
 
+// NOTE: All values here are garbage,
 void setEmptyFloatVolume(struct FloatVolume *fv, unsigned height,
   unsigned width, unsigned depth) {
   unsigned i;
@@ -13,10 +14,6 @@ void setEmptyFloatVolume(struct FloatVolume *fv, unsigned height,
 
   fv->contents = (float *) malloc(sizeof(float) * fv->width * fv->height *
     fv->depth);
-
-  for(i = 0; i < fv->height * fv->width * fv->depth; i++) {
-    *(fv->contents + i) = 0.f;
-  }
 }
 
 void printFloatVolume(struct FloatVolume *fv) {
