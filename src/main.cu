@@ -389,10 +389,10 @@ void setPathVolumeSerial(struct FloatVolume *pv, struct FloatVolume *dv) {
 // Height, width, and depth refer to the dimensions of the float volume
 __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
   unsigned width, unsigned depth) {
-  // The subvolume
-  __shared__ float sv[11 * 11 * 11];
+  // path subvolume per block
+  __shared__ float spv[11 * 11 * 11];
   float candidates3D[7], minCandidate;
-  unsigned i, j, tempBool;
+  unsigned i, j;
 
   // This thread's position in its block's subsection of the float volume
   unsigned sx, sy, sz;
@@ -402,6 +402,11 @@ __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
   unsigned bx, by, bz;
   // This thread's position in the entire float volume
   unsigned vx, vy, vz;
+
+  // The diff value at location (vy, vx, vz)
+  float diff;
+  // Boolean to multiply by to avoid branches
+  unsigned withinBounds;
 
   // Get the position of this thread in its subsection
   sz = threadIdx.x % 10;
@@ -426,82 +431,102 @@ __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
   vy = sy + 10 * by + 1;
   vz = sz + 10 * bz + 1;
 
-  // ez brute force... for demo purposes
-  // NO
+  // Avoid branches
+  withinBounds = vy < height && vx < width && vz < depth;
 
-  // Copy relevant diff volume into local memory
-  // First normally
-  sv[(sy + 1) * 11 * 11 + (sx + 1) * 11 + (sz + 1)] =
-    d_pv[vy * width * depth + vx * depth + vz];
-  // Then edge cases
+  if(withinBounds) {
+    // Relevant entry in the diff volume
+    diff = d_dv[vy * width * depth + vx * depth + vz];
 
-  // Take care of most of y = 0
-  if(sy == 0) {
-    sv[sy * 11 * 11 + (sx + 1) * 11 + (sz + 1)] =
-      d_pv[(vy - 1) * width * depth + vx * depth + vz];
+    // Begin filling out path subvolume
+
+    // Set all to zero
+    spv[(sy + 1) * 11 * 11 + (sx + 1) * 11 + (sz + 1)] = 0.f;
+
+    // Fill out y == 0 in path subvolume
+    if(sy == 0) {
+      spv[sy * 11 * 11 + (sx + 1) * 11 + (sz + 1)] =
+        d_pv[(vy - 1) * width * depth + vx * depth + vz];
+    }
+
+    // Fill out x == 0 in path subvolume
+    if(sx == 0) {
+      spv[(sy + 1) * 11 * 11 + sx * 11 + (sz + 1)] =
+        d_pv[vy * width * depth + (vx - 1) * depth + vz];
+    }
+
+    // Fill out z == 0 in path subvolume
+    if(sz == 0) {
+      spv[(sy + 1) * 11 * 11 + (sx + 1) * 11 + sz] =
+        d_pv[vy * width * depth + vx * depth + (vz - 1)];
+    }
+
+    // Fill out y == 0 and x == 0 in path subvolume
+    if(sy == 0 && sx == 0) {
+      spv[sy * 11 * 11 + sx * 11 + (sz + 1)] =
+        d_pv[(vy - 1) * width * depth + (vx - 1) * depth + vz];
+    }
+
+    // Fill out y == 0 and z == 0 in path subvolume
+    if(sy == 0 && sz == 0) {
+      spv[sy * 11 * 11 + (sx + 1) * 11 + sz] =
+        d_pv[(vy - 1) * width * depth + vx * depth + (vz - 1)];
+    }
+
+    // Fill out z == 0 and x == 0 in path subvolume
+    if(sz == 0 && sx == 0) {
+      spv[(sy + 1) * 11 * 11 + sx * 11 + sz] =
+        d_pv[vy * width * depth + (vx - 1) * depth + (vz - 1)];
+    }
+
+    // Fill out y == 0, x == 0, and z == 0 in path subvolume
+    if(sy == 0 && sx == 0 && sz == 0) {
+      spv[sy * 11 * 11 + sx * 11 + sz] =
+        d_pv[(vy - 1) * width * depth + (vx - 1) * depth + (vz - 1)];
+    }
   }
 
-  // Take care of most of x = 0
-  if(sx == 0) {
-    sv[(sy + 1) * 11 * 11 + sx * 11 + (sz + 1)] =
-      d_pv[vy * width * depth + (vx - 1) * depth + vz];
-  }
-
-  // Take care of most of z = 0
-  if(sz == 0) {
-    sv[(sy + 1) * 11 * 11 + (sx + 1) * 11 + sz] =
-      d_pv[vy * width * depth + vx * depth + (vz - 1)];
-  }
-
-  // Take care of x = 0, y = 0
-  if(sx == 0 && sy == 0) {
-    sv[sy * 11 * 11 + sx * 11 + (sz + 1)] =
-      d_pv[(vy - 1) * width * depth + (vx - 1) * depth + vz];
-  }
-
-  // Take care of y = 0, z = 0
-  if(sy == 0 && sz == 0) {
-    sv[sy * 11 * 11 + (sx + 1) * 11 + sz] =
-      d_pv[(vy - 1) * width * depth + vx * depth + (vz - 1)];
-  }
-
-  // Take care of z = 0, x = 0
-  if(sz == 0 && sx == 0) {
-    sv[(sy + 1) * 11 * 11 + sx * 11 + sz] =
-      d_pv[vy * width * depth + (vx - 1) * 11 + (vz - 1)];
-  }
-
-  // Take care of y = 0, x = 0, z = 0
-  if(sz == 0 && sx == 0 && sy == 0) {
-    sv[sy * 11 * 11 + sx * 11 + sz] =
-      d_pv[(vy - 1) * width * depth + (vx - 1) * 11 + (vz - 1)];
-  }
+  __syncthreads();
 
   // Make each thread do work over and over until subvolume is filled
   for(i = 0; i < 10 + (10 - 1) + (10 - 1); i++) {
-    if(vy < height && vx < width && vz < depth) {
-      candidates3D[0] = d_pv[vy * width * depth + vx * depth + (vz - 1)];
-      candidates3D[1] = d_pv[vy * width * depth + (vx - 1) * depth + vz];
-      candidates3D[2] = d_pv[vy * width * depth + (vx - 1) * depth + (vz - 1)];
-      candidates3D[3] = d_pv[(vy - 1) * width * depth + vx * depth + vz];
-      candidates3D[4] = d_pv[(vy - 1) * width * depth + vx * depth + (vz - 1)];
-      candidates3D[5] = d_pv[(vy - 1) * width * depth + (vx - 1) * depth + vz];
-      candidates3D[6] =
-        d_pv[(vy - 1) * width * depth + (vx - 1) * depth + (vz - 1)];
+    /*candidates3D[0] = d_pv[vy * width * depth + vx * depth + (vz - 1)];
+    candidates3D[1] = d_pv[vy * width * depth + (vx - 1) * depth + vz];
+    candidates3D[2] = d_pv[vy * width * depth + (vx - 1) * depth + (vz - 1)];
+    candidates3D[3] = d_pv[(vy - 1) * width * depth + vx * depth + vz];
+    candidates3D[4] = d_pv[(vy - 1) * width * depth + vx * depth + (vz - 1)];
+    candidates3D[5] = d_pv[(vy - 1) * width * depth + (vx - 1) * depth + vz];
+    candidates3D[6] =
+      d_pv[(vy - 1) * width * depth + (vx - 1) * depth + (vz - 1)];*/
+    candidates3D[0] = spv[sy * 11 * 11 + sx * 11 + sz];
+    candidates3D[1] = spv[sy * 11 * 11 + sx * 11 + (sz + 1)];
+    candidates3D[2] = spv[sy * 11 * 11 + (sx + 1) * 11 + sz];
+    candidates3D[3] = spv[sy * 11 * 11 + (sx + 1) * 11 + (sz + 1)];
+    candidates3D[4] = spv[(sy + 1) * 11 * 11 + sx * 11 + sz];
+    candidates3D[5] = spv[(sy + 1) * 11 * 11 + sx * 11 + (sz + 1)];
+    candidates3D[6] = spv[(sy + 1) * 11 * 11 + (sx + 1) * 11 + sz];
 
-      minCandidate = candidates3D[0];
-      for(j = 1; j < 7; j++) {
-        tempBool = candidates3D[j] < minCandidate;
-        /* if(candidates3D[j] < minCandidate)
-          minCandidate = candidates3D[j]; */
-        minCandidate = minCandidate * !tempBool + candidates3D[j] * tempBool;
-      }
-
-      d_pv[vy * width * depth + vx * depth + vz] = minCandidate +
-        d_dv[vy * width * depth + vx * depth + vz];
+    minCandidate = candidates3D[0];
+    for(j = 1; j < 7; j++) {
+      if(candidates3D[j] < minCandidate)
+        minCandidate = candidates3D[j];
     }
+
+    __syncthreads();
+
+    if(withinBounds) {
+      //d_pv[vy * width * depth + vx * depth + vz] = minCandidate + diff;
+      spv[(sy + 1) * 11 * 11 + (sx + 1) * 11 + (sz + 1)] = minCandidate + diff;
+    }
+
     __syncthreads();
   }
+
+  if(withinBounds) {
+    d_pv[vy * width * depth + vx * depth + vz] =
+      spv[(sy + 1) * 11 * 11 + (sx + 1) * 11 + (sz + 1)];
+  }
+  __syncthreads();
 }
 
 // TODO : Currently the easy implementation
