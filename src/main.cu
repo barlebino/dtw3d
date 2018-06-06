@@ -649,6 +649,7 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   // TESTING
   gettimeofday(&smallstart, NULL);
 
+  // TODO: Make these memcpys unnecessary, do in setBigPathVolumeParallel
   // Give the diff volume to the GPU
   cudaMemcpy(d_dv, dv->contents, fvDataLen * sizeof(float),
     cudaMemcpyHostToDevice);
@@ -656,7 +657,6 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   cudaMemcpy(d_pv, pv->contents, fvDataLen * sizeof(float),
     cudaMemcpyHostToDevice);
 
-  // TODO: Make these memcpys unnecessary, do in setBigPathVolumeParallel
   // TESTING
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
