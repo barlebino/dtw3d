@@ -615,6 +615,7 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   // TESTING
   gettimeofday(&smallstart, NULL);
 
+  // TODO: CUDA-ize all of these border fills
   // Fill cells where x = 0 and z = 0
   setZ0X0(pv, dv);
   // Fill cells where x = 0
@@ -624,9 +625,29 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
 
   fvDataLen = pv->height * pv->width * pv->depth;
 
+  // TESTING
+  gettimeofday(&smallstop, NULL);
+  startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
+  stopTimeInMicros = 1000000 * smallstop.tv_sec + smallstop.tv_usec;
+  printf("small parallel border fill took %llu us\n", stopTimeInMicros -
+    startTimeInMicros);
+
+  // TESTING
+  gettimeofday(&smallstart, NULL);
+
   // Allocate space on the GPU
   cudaMalloc((void **) &d_pv, fvDataLen * sizeof(float));
   cudaMalloc((void **) &d_dv, fvDataLen * sizeof(float));
+
+  // TESTING
+  gettimeofday(&smallstop, NULL);
+  startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
+  stopTimeInMicros = 1000000 * smallstop.tv_sec + smallstop.tv_usec;
+  printf("small parallel malloc took %llu us\n",
+    stopTimeInMicros - startTimeInMicros);
+
+  // TESTING
+  gettimeofday(&smallstart, NULL);
 
   // Give the diff volume to the GPU
   cudaMemcpy(d_dv, dv->contents, fvDataLen * sizeof(float),
@@ -634,6 +655,17 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   // Give incomplete path volume to the GPU
   cudaMemcpy(d_pv, pv->contents, fvDataLen * sizeof(float),
     cudaMemcpyHostToDevice);
+
+  // TODO: Make these memcpys unnecessary, do in setBigPathVolumeParallel
+  // TESTING
+  gettimeofday(&smallstop, NULL);
+  startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
+  stopTimeInMicros = 1000000 * smallstop.tv_sec + smallstop.tv_usec;
+  printf("small parallel memcpy took %llu us\n",
+    stopTimeInMicros - startTimeInMicros);
+
+  // TESTING
+  gettimeofday(&smallstart, NULL);
 
   // Kernel stuff
   // 1000 threads per block
@@ -653,8 +685,6 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   gdim[2] = (pv->depth - 1) / 10;
   if((pv->depth - 1) % 10)
     gdim[2] = gdim[2] + 1;
-
-  printf("gdim: [%u, %u, %u]\n", gdim[0], gdim[1], gdim[2]);
 
   num_blocks = gdim[0] * gdim[1] * gdim[2];
   // Houdini stuff (Manhattan distance + 1)
@@ -841,8 +871,8 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
     gettimeofday(&smallstop, NULL);
     startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
     stopTimeInMicros = 1000000 * smallstop.tv_sec + smallstop.tv_usec;
-    printf("copies to subvolumes took %llu us\n", stopTimeInMicros -
-      startTimeInMicros);
+    printf("big parallel copies to subvolumes took %llu us\n",
+      stopTimeInMicros - startTimeInMicros);
 
     // Complete the path subvolume
     setSmallPathVolumeParallel(&subpathvolume, &subdiffvolume);
@@ -866,8 +896,8 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
     gettimeofday(&smallstop, NULL);
     startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
     stopTimeInMicros = 1000000 * smallstop.tv_sec + smallstop.tv_usec;
-    printf("copy to big volume and setup took %llu us\n", stopTimeInMicros -
-      startTimeInMicros);
+    printf("big parallel copy to big volume and setup took %llu us\n",
+      stopTimeInMicros - startTimeInMicros);
   }
 
   // Get the height of the volume of the final iteration
@@ -898,7 +928,7 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
   stopTimeInMicros = 1000000 * smallstop.tv_sec + smallstop.tv_usec;
-  printf("last iteration setup took %llu us\n", stopTimeInMicros -
+  printf("big parallel last iteration setup took %llu us\n", stopTimeInMicros -
     startTimeInMicros);
 
   // TESTING
@@ -928,7 +958,7 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
   stopTimeInMicros = 1000000 * smallstop.tv_sec + smallstop.tv_usec;
-  printf("copies to subvolumes took %llu us\n", stopTimeInMicros -
+  printf("big parallel copies to subvolumes took %llu us\n", stopTimeInMicros -
     startTimeInMicros);
 
   // Complete path subvolume
@@ -956,7 +986,7 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
   stopTimeInMicros = 1000000 * smallstop.tv_sec + smallstop.tv_usec;
-  printf("copy to big volume and deallocation took %llu us\n",
+  printf("big parallel copy to big volume and deallocation took %llu us\n",
     stopTimeInMicros - startTimeInMicros);
 
   // TESTING
