@@ -1275,8 +1275,6 @@ int main() {
 
   // --- PICTURE CREATION SECTION ---------------------------------------------
 
-  /*setRandomPicture(&picture1, 6, 6);
-  setRandomPicture(&picture2, 6, 6);*/
   setRandomPicture(&picture1, i, j);
   setRandomPicture(&picture2, i, j);
 
@@ -1293,22 +1291,20 @@ int main() {
   setDiffVolumeSerial(&dvs, &picture1, &picture2);
 
   printf("--- diff volume serial ---\n");
-  printFloatVolume(&dvs);
-  printf("\n");
+  //printFloatVolume(&dvs);
+  //printf("\n");
 
-  // setDiffVolumeParallel(&dvp, &picture1, &picture2);
   setBigDiffVolumeParallel(&dvp, &picture1, &picture2, 2);
 
   printf("--- diff volume parallel ---\n");
-  printFloatVolume(&dvp);
-  printf("\n");
+  //printFloatVolume(&dvp);
+  //printf("\n");
 
   printf("--- diff volume comparison ---\n");
   res = compareFloatVolumes(&dvs, &dvp);
   printf("%d\n", res);
   if(res != 0)
     exit(1);
-  //printf("%d\n", compareFloatVolumes(&dvs, &dvp));
   printf("\n");
 
   // --- PATH VOLUME SECTION --------------------------------------------------
@@ -1316,33 +1312,20 @@ int main() {
   setPathVolumeSerial(&pvs, &dvs);
 
   printf("--- path volume serial ---\n");
-  /*printFloatVolume(&pvs);
-  printf("\n");*/
+  //printFloatVolume(&pvs);
+  //printf("\n");
 
-  /*int k;
-  for(k = 2; k < 200; k++) {
-    printf("k: %u\n", k);
-    setBigPathVolumeParallel(&pvp, &dvp, k);
-  }*/
   setBigPathVolumeParallel(&pvp, &dvp, 150);
-  // Print test volume
-  /* printf("-- test volume --\n");
-  printFloatVolume(&pvp); */
-  // Deallocate test volume
-  // free(pvp.contents);
-
-  //setPathVolumeParallel(&pvp, &dvp);
 
   printf("--- path volume parallel ---\n");
-  /*printFloatVolume(&pvp);
-  printf("\n");*/
+  //printFloatVolume(&pvp);
+  //printf("\n");
 
   printf("--- path volume comparison ---\n");
   res = compareFloatVolumes(&pvs, &pvp);
   printf("%d\n", res);
   if(res != 0)
     exit(1);
-  //printf("%d\n", compareFloatVolumes(&pvs, &pvp));
   printf("\n");
 
   // --- PATH DEVIATION -------------------------------------------------------

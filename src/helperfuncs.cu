@@ -14,16 +14,6 @@ unsigned toIndex3D(unsigned a, unsigned b, unsigned blen, unsigned c,
   return a * blen * clen + b * clen + c;
 }
 
-/* // Given two colors, determine differentce
-float diffColor(float *c1, float *c2) {
-  return sqrtf(
-    powf(*(c1 + 0) - *(c2 + 0), 2.f) +
-    powf(*(c1 + 1) - *(c2 + 1), 2.f) +
-    powf(*(c1 + 2) - *(c2 + 2), 2.f) +
-    powf(*(c1 + 3) - *(c2 + 3), 2.f)
-  );
-} */
-
 // Given two colors, determine differentce
 float diffColor(unsigned char *c1, unsigned char *c2) {
   return sqrtf(
