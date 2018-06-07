@@ -371,8 +371,6 @@ void setPathVolumeSerial(struct FloatVolume *pv, struct FloatVolume *dv) {
         *(pv->contents + toIndex3D(i, j, pv->width, k, pv->depth)) =
           *(dv->contents + toIndex3D(i, j, pv->width, k, pv->depth)) +
           minCandidate;
-
-        //*(pv->contents + toIndex3D(i, j, pv->width, k, pv->depth)) = 11.f;
       }
     }
   }
@@ -718,8 +716,6 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
 
     cudaDeviceSynchronize();
   }
-
-  //cudaDeviceSynchronize();
 
   // TESTING
   gettimeofday(&smallstop, NULL);
