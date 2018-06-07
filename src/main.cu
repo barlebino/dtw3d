@@ -14,7 +14,7 @@
 
 int spvCount = 0;
 
-void setDiffVolumeSerial(struct FloatVolume *fv, struct Picture *picture1,
+/* void setDiffVolumeSerial(struct FloatVolume *fv, struct Picture *picture1,
   struct Picture *picture2) {
   unsigned i, j, k;
   float *p1c, *p2c;
@@ -47,10 +47,46 @@ void setDiffVolumeSerial(struct FloatVolume *fv, struct Picture *picture1,
       }
     }
   }
+} */
+void setDiffVolumeSerial(struct FloatVolume *fv, struct Picture *picture1,
+  struct Picture *picture2) {
+  unsigned i, j, k;
+  unsigned char *p1c, *p2c;
+
+  // If pictures have differing dimensions, then quit
+  if(picture1->width != picture2->width ||
+    picture1->height != picture2->height) {
+    printf("Pictures have different dimensions. Exiting setDiffVolmeSerial\n");
+    return;
+  }
+
+  fv->height = picture1->height;
+  fv->width = picture1->width;
+  fv->depth = picture1->width;
+
+  fv->contents = (float *) malloc(sizeof(float) * fv->height * fv->width *
+    fv->depth);
+
+  for(i = 0; i < fv->height; i++) {
+    for(j = 0; j < fv->width; j++) {
+      for(k = 0; k < fv->depth; k++) {
+        // Get the index of the pixel of the first picture
+        p1c = picture1->colors + toIndex2D(i, j, picture1->width) * 4;
+        // Get the index of the pixel of the second picture
+        p2c = picture2->colors + toIndex2D(i, k, picture2->width) * 4;
+
+        // Insert the distance between these two colors into the float volume
+        *(fv->contents + toIndex3D(i, j, fv->width, k, fv->depth)) =
+          diffColor(p1c, p2c);
+      }
+    }
+  }
 }
 
-__global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
-  float *d_picture2, unsigned picWidth, unsigned picHeight) {
+//__global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
+//  float *d_picture2, unsigned picWidth, unsigned picHeight) {
+__global__ void setDiffVolumeKernel(float *d_fv, unsigned char *d_picture1,
+  unsigned char *d_picture2, unsigned picWidth, unsigned picHeight) {
   __shared__ float p1_section[10 * 10 * 4];
   __shared__ float p2_section[10 * 10 * 4];
   unsigned i;
@@ -101,7 +137,7 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
     if(vx < picWidth && vy < picHeight) {
       for(i = 0; i < 4; i++) {
         p1_section[(sx + sy * 10) * 4 + i] =
-          d_picture1[(vx + vy * picWidth) * 4 + i];
+          (float) d_picture1[(vx + vy * picWidth) * 4 + i];
       }
     }
   }
@@ -116,7 +152,7 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
     if(vz < picWidth && vy < picHeight) {
       for(i = 0; i < 4; i++) {
         p2_section[(sz + sy * 10) * 4 + i] =
-          d_picture2[(vz + vy * picWidth) * 4 + i];
+          (float) d_picture2[(vz + vy * picWidth) * 4 + i];
       }
     }
   }
@@ -142,7 +178,9 @@ __global__ void setDiffVolumeKernel(float *d_fv, float *d_picture1,
 void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
   struct Picture *picture2) {
   // Memory locations of float arrays on the GPU
-  float *d_fv, *d_picture1, *d_picture2;
+  //float *d_fv, *d_picture1, *d_picture2;
+  float *d_fv;
+  unsigned char *d_picture1, *d_picture2;
   int fvDataLen;
   unsigned num_blocks, gdim[3];
 
@@ -165,18 +203,28 @@ void setDiffVolumeParallel(struct FloatVolume *fv, struct Picture *picture1,
 
   // Allocate space on the GPU
   cudaMalloc((void **) &d_fv, fvDataLen * sizeof(float));
+  //cudaMalloc((void **) &d_picture1, picture1->width * picture1->height *
+  //  sizeof(float) * 4);
   cudaMalloc((void **) &d_picture1, picture1->width * picture1->height *
-    sizeof(float) * 4);
+    sizeof(unsigned char) * 4);
+  //cudaMalloc((void **) &d_picture2, picture1->width * picture1->height *
+  //  sizeof(float) * 4);
   cudaMalloc((void **) &d_picture2, picture1->width * picture1->height *
-    sizeof(float) * 4);
+    sizeof(unsigned char) * 4);
 
   // Give the pictures to the GPU
   // Params: destination, source, size of data to be copied, operation
+  //cudaMemcpy(d_picture1, picture1->colors,
+  //  picture1->width * picture1->height * 4 * sizeof(float),
+  //  cudaMemcpyHostToDevice);
   cudaMemcpy(d_picture1, picture1->colors,
-    picture1->width * picture1->height * 4 * sizeof(float),
+    picture1->width * picture1->height * 4 * sizeof(unsigned char),
     cudaMemcpyHostToDevice);
+  //cudaMemcpy(d_picture2, picture2->colors,
+  //  picture1->width * picture1->height * 4 * sizeof(float),
+  //  cudaMemcpyHostToDevice);
   cudaMemcpy(d_picture2, picture2->colors,
-    picture1->width * picture1->height * 4 * sizeof(float),
+    picture1->width * picture1->height * 4 * sizeof(unsigned char),
     cudaMemcpyHostToDevice);
 
   // Kernel stuff
@@ -254,13 +302,16 @@ void setBigDiffVolumeParallel(struct FloatVolume *bigdiffvolume,
   // Note: (subdiffvolume will be allocated in setDiffVolumeParallel)
   subpicture1.width = picture1->width;
   subpicture1.height = subpicture_height;
-  subpicture1.colors = (float *) malloc(sizeof(float) * subpicture1.width *
-    subpicture1.height * 4); // RGBA
+  //subpicture1.colors = (float *) malloc(sizeof(float) * subpicture1.width *
+  //  subpicture1.height * 4); // RGBA
+  subpicture1.colors = (unsigned char *) malloc(sizeof(unsigned char) *
+    subpicture1.width * subpicture1.height * 4); // RGBA
+
   // Note: dimensions of picture1 and picture2 are the same
   subpicture2.width = picture2->width;
   subpicture2.height = subpicture_height;
-  subpicture2.colors = (float *) malloc(sizeof(float) * subpicture2.width *
-    subpicture2.height * 4); // RGBA
+  subpicture2.colors = (unsigned char *) malloc(sizeof(unsigned char) *
+    subpicture2.width * subpicture2.height * 4); // RGBA
 
   // How many 32 bit floats are in one subpicture
   subpicture_size = subpicture1.height * subpicture1.width * 4; // RGBA
@@ -276,10 +327,14 @@ void setBigDiffVolumeParallel(struct FloatVolume *bigdiffvolume,
   // numIterations - 1 because last iteration is a special case
   for(i = 0; i < numIterations - 1; i++) {
     // Load the subpictures
+    //memcpy(subpicture1.colors, picture1->colors + subpicture_size * i,
+    //  subpicture_size * sizeof(float));
     memcpy(subpicture1.colors, picture1->colors + subpicture_size * i,
-      subpicture_size * sizeof(float));
+      subpicture_size * sizeof(unsigned char));
+    //memcpy(subpicture2.colors, picture2->colors + subpicture_size * i,
+    //  subpicture_size * sizeof(float));
     memcpy(subpicture2.colors, picture2->colors + subpicture_size * i,
-      subpicture_size * sizeof(float));
+      subpicture_size * sizeof(unsigned char));
 
     // Call the normal diff volume function
     setDiffVolumeParallel(&subdiffvolume, &subpicture1, &subpicture2);
@@ -290,6 +345,7 @@ void setBigDiffVolumeParallel(struct FloatVolume *bigdiffvolume,
       subdiffvolume.contents, subdiffvolume_size * sizeof(float));
 
     // Deallocate the subvolume
+    // Allocated inside of setDiffVolumeParallel
     free(subdiffvolume.contents);
   }
 
@@ -307,10 +363,14 @@ void setBigDiffVolumeParallel(struct FloatVolume *bigdiffvolume,
   }
 
   // Reallocate subpictures
-  subpicture1.colors = (float *) malloc(sizeof(float) * subpicture1.width *
-    subpicture1.height * 4); // RGBA
-  subpicture2.colors = (float *) malloc(sizeof(float) * subpicture2.width *
-    subpicture2.height * 4); // RGBA
+  //subpicture1.colors = (float *) malloc(sizeof(float) * subpicture1.width *
+  //  subpicture1.height * 4); // RGBA
+  subpicture1.colors = (unsigned char *) malloc(sizeof(unsigned char) *
+    subpicture1.width * subpicture1.height * 4); // RGBA
+  //subpicture2.colors = (float *) malloc(sizeof(float) * subpicture2.width *
+  //  subpicture2.height * 4); // RGBA
+  subpicture2.colors = (unsigned char *) malloc(sizeof(unsigned char) *
+    subpicture2.width * subpicture2.height * 4); // RGBA
 
   // Recalculate sizes
   last_subpicture_size = subpicture1.height * subpicture1.width * 4; // RGBA
@@ -318,10 +378,14 @@ void setBigDiffVolumeParallel(struct FloatVolume *bigdiffvolume,
     subpicture2.width;
 
   // Load the subpictures
+  //memcpy(subpicture1.colors, picture1->colors + subpicture_size * i,
+  //  last_subpicture_size * sizeof(float));
   memcpy(subpicture1.colors, picture1->colors + subpicture_size * i,
-    last_subpicture_size * sizeof(float));
+    last_subpicture_size * sizeof(unsigned char));
+  //memcpy(subpicture2.colors, picture2->colors + subpicture_size * i,
+  //  last_subpicture_size * sizeof(float));
   memcpy(subpicture2.colors, picture2->colors + subpicture_size * i,
-    last_subpicture_size * sizeof(float));
+    last_subpicture_size * sizeof(unsigned char));
 
   // Call the normal diff volume Function
   setDiffVolumeParallel(&subdiffvolume, &subpicture1, &subpicture2);
@@ -1279,8 +1343,8 @@ int main() {
 
   srand(time(NULL));
 
-  for(i = 203; i < 204; i++) {
-  for(j = 203; j < 204; j++) {
+  for(i = 3; i < 4; i++) {
+  for(j = 3; j < 4; j++) {
 
   printf("(%u, %u)\n", i , j);
 
@@ -1292,27 +1356,27 @@ int main() {
   setRandomPicture(&picture2, i, j);
 
   printf("--- picture1 ---\n");
-  /* printPicture(&picture1);
-  printf("\n"); */
+  printPicture(&picture1);
+  printf("\n");
 
   printf("--- picture2 ---\n");
-  /* printPicture(&picture2);
-  printf("\n"); */
+  printPicture(&picture2);
+  printf("\n");
 
   // --- DIFF VOLUME SECTION --------------------------------------------------
 
   setDiffVolumeSerial(&dvs, &picture1, &picture2);
 
   printf("--- diff volume serial ---\n");
-  /* printFloatVolume(&dvs);
-  printf("\n"); */
+  printFloatVolume(&dvs);
+  printf("\n");
 
   // setDiffVolumeParallel(&dvp, &picture1, &picture2);
-  setBigDiffVolumeParallel(&dvp, &picture1, &picture2, 20);
+  setBigDiffVolumeParallel(&dvp, &picture1, &picture2, 2);
 
   printf("--- diff volume parallel ---\n");
-  /* printFloatVolume(&dvp);
-  printf("\n"); */
+  printFloatVolume(&dvp);
+  printf("\n");
 
   printf("--- diff volume comparison ---\n");
   res = compareFloatVolumes(&dvs, &dvp);

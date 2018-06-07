@@ -11,7 +11,8 @@ unsigned toIndex3D(unsigned a, unsigned b, unsigned blen, unsigned c,
   unsigned clen);
 
 // Given two colors, determine differentce
-float diffColor(float *c1, float *c2);
+//float diffColor(float *c1, float *c2);
+float diffColor(unsigned char *c1, unsigned char *c2);
 
 // Return 1 if difference, 0 if none
 int compareFloatVolumes(struct FloatVolume *fv1, struct FloatVolume *fv2);

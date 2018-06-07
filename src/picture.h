@@ -3,9 +3,13 @@
 
 // Color at index 0 is top left, at index 0 is top left + 1 to the right
 // All colors are in [0, 255]
-struct Picture {
+/*struct Picture {
   unsigned width, height;
   float *colors;
+};*/
+struct Picture {
+  unsigned width, height;
+  unsigned char *colors;
 };
 
 // Sets the picture at location "picture" into a random picture of dimensions
