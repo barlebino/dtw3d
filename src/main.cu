@@ -394,7 +394,6 @@ __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
   // path subvolume per block
   __shared__ float spv[11 * 11 * 11];
   float minCandidate, curCandidate;
-  //double hack;
   unsigned i, j;
 
   // This thread's position in its block's subsection of the float volume
@@ -496,44 +495,21 @@ __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
     // Get the least of all precursors
     minCandidate = spv[sy * 11 * 11 + sx * 11 + sz];
 
-    /*// TESTING
-    hack = *((double *) (&spv + sy * 11 * 11 + sx * 11 + sz));
-    // Get lower half of the hack
-    minCandidate = *((float *) &hack);
-    // Get upper half of the hack
-    curCandidate = *(((float *) &hack) + 1);*/
-
     curCandidate = spv[sy * 11 * 11 + sx * 11 + (sz + 1)];
     if(curCandidate < minCandidate)
       minCandidate = curCandidate;
-
-    /*// TESTING
-    hack = *((double *) (&spv + sy * 11 * 11 + (sx + 1) * 11 + sz));
-    // Get lower half of the hack
-    curCandidate = *((float *) &hack);*/
 
     curCandidate = spv[sy * 11 * 11 + (sx + 1) * 11 + sz];
     if(curCandidate < minCandidate)
       minCandidate = curCandidate;
 
-    /*// Get upper half of the hack
-    curCandidate = *(((float *) &hack) + 1);*/
-
     curCandidate = spv[sy * 11 * 11 + (sx + 1) * 11 + (sz + 1)];
     if(curCandidate < minCandidate)
       minCandidate = curCandidate;
 
-    /*// TESTING
-    hack = *((double *) (&spv + (sy + 1) * 11 * 11 + sx * 11 + sz));
-    // Get lower half of the hack
-    curCandidate = *((float *) &hack);*/
-
     curCandidate = spv[(sy + 1) * 11 * 11 + sx * 11 + sz];
     if(curCandidate < minCandidate)
       minCandidate = curCandidate;
-
-    /*// Get upper half of the hack
-    curCandidate = *(((float *) &hack) + 1);*/
 
     curCandidate = spv[(sy + 1) * 11 * 11 + sx * 11 + (sz + 1)];
     if(curCandidate < minCandidate)
@@ -543,7 +519,7 @@ __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
     if(curCandidate < minCandidate)
       minCandidate = curCandidate;
 
-    __syncthreads();
+    //__syncthreads();
 
     spv[(sy + 1) * 11 * 11 + (sx + 1) * 11 + (sz + 1)] = minCandidate + diff;
 
