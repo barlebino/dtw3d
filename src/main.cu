@@ -11,6 +11,7 @@
 #include "helperfuncs.h"
 #include "picture.h"
 #include "floatvolume.h"
+#include "lodepng.h"
 
 int spvCount = 0;
 
@@ -393,6 +394,7 @@ __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
   // path subvolume per block
   __shared__ float spv[11 * 11 * 11];
   float minCandidate, curCandidate;
+  //double hack;
   unsigned i, j;
 
   // This thread's position in its block's subsection of the float volume
@@ -494,21 +496,44 @@ __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
     // Get the least of all precursors
     minCandidate = spv[sy * 11 * 11 + sx * 11 + sz];
 
+    /*// TESTING
+    hack = *((double *) (&spv + sy * 11 * 11 + sx * 11 + sz));
+    // Get lower half of the hack
+    minCandidate = *((float *) &hack);
+    // Get upper half of the hack
+    curCandidate = *(((float *) &hack) + 1);*/
+
     curCandidate = spv[sy * 11 * 11 + sx * 11 + (sz + 1)];
     if(curCandidate < minCandidate)
       minCandidate = curCandidate;
+
+    /*// TESTING
+    hack = *((double *) (&spv + sy * 11 * 11 + (sx + 1) * 11 + sz));
+    // Get lower half of the hack
+    curCandidate = *((float *) &hack);*/
 
     curCandidate = spv[sy * 11 * 11 + (sx + 1) * 11 + sz];
     if(curCandidate < minCandidate)
       minCandidate = curCandidate;
 
+    /*// Get upper half of the hack
+    curCandidate = *(((float *) &hack) + 1);*/
+
     curCandidate = spv[sy * 11 * 11 + (sx + 1) * 11 + (sz + 1)];
     if(curCandidate < minCandidate)
       minCandidate = curCandidate;
 
+    /*// TESTING
+    hack = *((double *) (&spv + (sy + 1) * 11 * 11 + sx * 11 + sz));
+    // Get lower half of the hack
+    curCandidate = *((float *) &hack);*/
+
     curCandidate = spv[(sy + 1) * 11 * 11 + sx * 11 + sz];
     if(curCandidate < minCandidate)
       minCandidate = curCandidate;
+
+    /*// Get upper half of the hack
+    curCandidate = *(((float *) &hack) + 1);*/
 
     curCandidate = spv[(sy + 1) * 11 * 11 + sx * 11 + (sz + 1)];
     if(curCandidate < minCandidate)
@@ -701,7 +726,7 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   printf("small parallel prologue took %llu us\n", stopTimeInMicros -
     startTimeInMicros);
 
-  //printf("num_iter: %d\n", num_iter);
+  printf("num_iter: %d\n", num_iter);
 
   // TESTING
   gettimeofday(&smallstart, NULL);
@@ -1268,8 +1293,8 @@ int main() {
 
   srand(time(NULL));
 
-  for(i = 3; i < 4; i++) {
-  for(j = 3; j < 4; j++) {
+  for(i = 253; i < 254; i++) {
+  for(j = 253; j < 254; j++) {
 
   printf("(%u, %u)\n", i , j);
 
@@ -1277,6 +1302,10 @@ int main() {
 
   setRandomPicture(&picture1, i, j);
   setRandomPicture(&picture2, i, j);
+  /*lodepng_decode32_file(&picture1.colors, &picture1.width, &picture1.height,
+    "tagpro-red.png");
+  lodepng_decode32_file(&picture2.colors, &picture2.width, &picture2.height,
+    "tagpro-red.png");*/
 
   printf("--- picture1 ---\n");
   //printPicture(&picture1);
@@ -1294,7 +1323,7 @@ int main() {
   //printFloatVolume(&dvs);
   //printf("\n");
 
-  setBigDiffVolumeParallel(&dvp, &picture1, &picture2, 2);
+  setBigDiffVolumeParallel(&dvp, &picture1, &picture2, 200);
 
   printf("--- diff volume parallel ---\n");
   //printFloatVolume(&dvp);
@@ -1315,7 +1344,7 @@ int main() {
   //printFloatVolume(&pvs);
   //printf("\n");
 
-  setBigPathVolumeParallel(&pvp, &dvp, 150);
+  setBigPathVolumeParallel(&pvp, &dvp, 200);
 
   printf("--- path volume parallel ---\n");
   //printFloatVolume(&pvp);
