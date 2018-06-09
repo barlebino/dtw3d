@@ -1,3 +1,5 @@
+//#define dtw_debug 0
+
 #include <stdio.h>
 #include <stdlib.h>
 // For random number generator
@@ -381,8 +383,6 @@ void setPathVolumeSerial(struct FloatVolume *pv, struct FloatVolume *dv) {
 
   // TESTING
   gettimeofday(&stop, NULL);
-  //printf("single thread took %lu microseconds\n",
-  //  stop.tv_usec - start.tv_usec);
   startTimeInMicros = 1000000 * start.tv_sec + start.tv_usec;
   stopTimeInMicros = 1000000 * stop.tv_sec + stop.tv_usec;
   printf("single thread took %llu us\n", stopTimeInMicros - startTimeInMicros);
@@ -393,6 +393,7 @@ __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
   unsigned width, unsigned depth) {
   // path subvolume per block
   __shared__ float spv[11 * 11 * 11];
+  __shared__ float spv2[11 * 11 * 11];
   float minCandidate, curCandidate;
   unsigned i, j;
 
@@ -409,6 +410,8 @@ __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
   float diff;
   // Self explanatory
   unsigned withinBounds;
+  float temp;
+  unsigned index;
 
   // Get the position of this thread in its subsection
   sz = threadIdx.x % 10;
@@ -443,92 +446,129 @@ __global__ void setPathVolumeKernel(float *d_pv, float *d_dv, unsigned height,
     // Begin filling out path subvolume
 
     // Set all to zero
-    spv[(sy + 1) * 11 * 11 + (sx + 1) * 11 + (sz + 1)] = 0.f;
+    spv[(sy + 1) * 121 + (sx + 1) * 11 + (sz + 1)] = 0.f;
+    spv2[(sy + 1) * 121 + (sx + 1) * 11 + (sz + 1)] = 0.f;
 
     // Fill out y == 0 in path subvolume
     if(sy == 0) {
-      spv[sy * 11 * 11 + (sx + 1) * 11 + (sz + 1)] =
-        d_pv[(vy - 1) * width * depth + vx * depth + vz];
+      temp = d_pv[(vy - 1) * width * depth + vx * depth + vz];
+      spv[sy * 121 + (sx + 1) * 11 + (sz + 1)] = temp;
+      spv2[sy * 121 + (sx + 1) * 11 + (sz + 1)] = temp;
     }
 
     // Fill out x == 0 in path subvolume
     if(sx == 0) {
-      spv[(sy + 1) * 11 * 11 + sx * 11 + (sz + 1)] =
-        d_pv[vy * width * depth + (vx - 1) * depth + vz];
+      temp = d_pv[vy * width * depth + (vx - 1) * depth + vz];
+      spv[(sy + 1) * 121 + sx * 11 + (sz + 1)] = temp;
+      spv2[(sy + 1) * 121 + sx * 11 + (sz + 1)] = temp;
     }
 
     // Fill out z == 0 in path subvolume
     if(sz == 0) {
-      spv[(sy + 1) * 11 * 11 + (sx + 1) * 11 + sz] =
-        d_pv[vy * width * depth + vx * depth + (vz - 1)];
+      temp = d_pv[vy * width * depth + vx * depth + (vz - 1)];
+      spv[(sy + 1) * 121 + (sx + 1) * 11 + sz] = temp;
+      spv2[(sy + 1) * 121 + (sx + 1) * 11 + sz] = temp;
     }
 
     // Fill out y == 0 and x == 0 in path subvolume
     if(sy == 0 && sx == 0) {
-      spv[sy * 11 * 11 + sx * 11 + (sz + 1)] =
-        d_pv[(vy - 1) * width * depth + (vx - 1) * depth + vz];
+      temp = d_pv[(vy - 1) * width * depth + (vx - 1) * depth + vz];
+      spv[sy * 121 + sx * 11 + (sz + 1)] = temp;
+      spv2[sy * 121 + sx * 11 + (sz + 1)] = temp;
     }
 
     // Fill out y == 0 and z == 0 in path subvolume
     if(sy == 0 && sz == 0) {
-      spv[sy * 11 * 11 + (sx + 1) * 11 + sz] =
-        d_pv[(vy - 1) * width * depth + vx * depth + (vz - 1)];
+      temp = d_pv[(vy - 1) * width * depth + vx * depth + (vz - 1)];
+      spv[sy * 121 + (sx + 1) * 11 + sz] = temp;
+      spv2[sy * 121 + (sx + 1) * 11 + sz] = temp;
     }
 
     // Fill out z == 0 and x == 0 in path subvolume
     if(sz == 0 && sx == 0) {
-      spv[(sy + 1) * 11 * 11 + sx * 11 + sz] =
-        d_pv[vy * width * depth + (vx - 1) * depth + (vz - 1)];
+      temp = d_pv[vy * width * depth + (vx - 1) * depth + (vz - 1)];
+      spv[(sy + 1) * 121 + sx * 11 + sz] = temp;
+      spv2[(sy + 1) * 121 + sx * 11 + sz] = temp;
     }
 
     // Fill out y == 0, x == 0, and z == 0 in path subvolume
     if(sy == 0 && sx == 0 && sz == 0) {
-      spv[sy * 11 * 11 + sx * 11 + sz] =
-        d_pv[(vy - 1) * width * depth + (vx - 1) * depth + (vz - 1)];
+      temp = d_pv[(vy - 1) * width * depth + (vx - 1) * depth + (vz - 1)];
+      spv[sy * 121 + sx * 11 + sz] = temp;
+      spv2[sy * 121 + sx * 11 + sz] = temp;
     }
   }
 
   __syncthreads();
 
   // Make each thread do work over and over until subvolume is filled
-  for(i = 0; i < 10 + (10 - 1) + (10 - 1); i++) {
+  for(i = 0; i < (10 + (10 - 1) + (10 - 1)) / 2; i++) {
     // Get the least of all precursors
-    minCandidate = spv[sy * 11 * 11 + sx * 11 + sz];
+    minCandidate = spv[sy * 121 + sx * 11 + sz];
 
-    curCandidate = spv[sy * 11 * 11 + sx * 11 + (sz + 1)];
+    curCandidate = spv[sy * 121 + sx * 11 + (sz + 1)];
     if(curCandidate < minCandidate)
       minCandidate = curCandidate;
 
-    curCandidate = spv[sy * 11 * 11 + (sx + 1) * 11 + sz];
+    curCandidate = spv[sy * 121 + (sx + 1) * 11 + sz];
     if(curCandidate < minCandidate)
       minCandidate = curCandidate;
 
-    curCandidate = spv[sy * 11 * 11 + (sx + 1) * 11 + (sz + 1)];
+    curCandidate = spv[sy * 121 + (sx + 1) * 11 + (sz + 1)];
     if(curCandidate < minCandidate)
       minCandidate = curCandidate;
 
-    curCandidate = spv[(sy + 1) * 11 * 11 + sx * 11 + sz];
+    curCandidate = spv[(sy + 1) * 121 + sx * 11 + sz];
     if(curCandidate < minCandidate)
       minCandidate = curCandidate;
 
-    curCandidate = spv[(sy + 1) * 11 * 11 + sx * 11 + (sz + 1)];
+    curCandidate = spv[(sy + 1) * 121 + sx * 11 + (sz + 1)];
     if(curCandidate < minCandidate)
       minCandidate = curCandidate;
 
-    curCandidate = spv[(sy + 1) * 11 * 11 + (sx + 1) * 11 + sz];
+    curCandidate = spv[(sy + 1) * 121 + (sx + 1) * 11 + sz];
     if(curCandidate < minCandidate)
       minCandidate = curCandidate;
 
-    //__syncthreads();
+    spv2[(sy + 1) * 121 + (sx + 1) * 11 + (sz + 1)] = minCandidate + diff;
 
-    spv[(sy + 1) * 11 * 11 + (sx + 1) * 11 + (sz + 1)] = minCandidate + diff;
+    __syncthreads();
+
+    // Get the least of all precursors
+    minCandidate = spv2[sy * 121 + sx * 11 + sz];
+
+    curCandidate = spv2[sy * 121 + sx * 11 + (sz + 1)];
+    if(curCandidate < minCandidate)
+      minCandidate = curCandidate;
+
+    curCandidate = spv2[sy * 121 + (sx + 1) * 11 + sz];
+    if(curCandidate < minCandidate)
+      minCandidate = curCandidate;
+
+    curCandidate = spv2[sy * 121 + (sx + 1) * 11 + (sz + 1)];
+    if(curCandidate < minCandidate)
+      minCandidate = curCandidate;
+
+    curCandidate = spv2[(sy + 1) * 121 + sx * 11 + sz];
+    if(curCandidate < minCandidate)
+      minCandidate = curCandidate;
+
+    curCandidate = spv2[(sy + 1) * 121 + sx * 11 + (sz + 1)];
+    if(curCandidate < minCandidate)
+      minCandidate = curCandidate;
+
+    curCandidate = spv2[(sy + 1) * 121 + (sx + 1) * 11 + sz];
+    if(curCandidate < minCandidate)
+      minCandidate = curCandidate;
+
+    spv[(sy + 1) * 121 + (sx + 1) * 11 + (sz + 1)] = minCandidate + diff;
 
     __syncthreads();
   }
 
   if(withinBounds) {
     d_pv[vy * width * depth + vx * depth + vz] =
-      spv[(sy + 1) * 11 * 11 + (sx + 1) * 11 + (sz + 1)];
+      spv[(sy + 1) * 121 + (sx + 1) * 11 + (sz + 1)];
   }
 }
 
@@ -614,8 +654,10 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   unsigned gdim[3];
   unsigned num_blocks, num_iter;
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstart, NULL);
+  #endif
 
   // TODO: CUDA-ize all of these border fills
   // Fill cells where x = 0 and z = 0
@@ -627,6 +669,7 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
 
   fvDataLen = pv->height * pv->width * pv->depth;
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
@@ -636,11 +679,13 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
 
   // TESTING
   gettimeofday(&smallstart, NULL);
+  #endif
 
   // Allocate space on the GPU
   cudaMalloc((void **) &d_pv, fvDataLen * sizeof(float));
   cudaMalloc((void **) &d_dv, fvDataLen * sizeof(float));
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
@@ -650,6 +695,7 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
 
   // TESTING
   gettimeofday(&smallstart, NULL);
+  #endif
 
   // TODO: Make these memcpys unnecessary, do in setBigPathVolumeParallel
   // Give the diff volume to the GPU
@@ -659,6 +705,7 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   cudaMemcpy(d_pv, pv->contents, fvDataLen * sizeof(float),
     cudaMemcpyHostToDevice);
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
@@ -668,6 +715,7 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
 
   // TESTING
   gettimeofday(&smallstart, NULL);
+  #endif
 
   // Kernel stuff
   // 1000 threads per block
@@ -695,6 +743,7 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   dim3 dimGrid(num_blocks);
   dim3 dimBlock(1000);
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
@@ -702,10 +751,9 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   printf("small parallel prologue took %llu us\n", stopTimeInMicros -
     startTimeInMicros);
 
-  printf("num_iter: %d\n", num_iter);
-
   // TESTING
   gettimeofday(&smallstart, NULL);
+  #endif
 
   for(i = 0; i < num_iter; i++) {
     // Each block will work on its own 10 x 10 x 10 portion
@@ -721,6 +769,7 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
     cudaDeviceSynchronize();
   }
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
@@ -730,6 +779,7 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
 
   // TESTING
   gettimeofday(&smallstart, NULL);
+  #endif
 
   // Copy the path volume back into host memory
   cudaMemcpy(pv->contents, d_pv, fvDataLen * sizeof(float),
@@ -739,12 +789,14 @@ void setSmallPathVolumeParallel(struct FloatVolume *pv,
   cudaFree(d_dv);
   cudaFree(d_pv);
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
   stopTimeInMicros = 1000000 * smallstop.tv_sec + smallstop.tv_usec;
   printf("small parallel epilogue took %llu us\n", stopTimeInMicros -
     startTimeInMicros);
+  #endif
 }
 
 void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
@@ -767,8 +819,10 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
   // TESTING
   gettimeofday(&start, NULL);
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstart, NULL);
+  #endif
 
   // Initialize the empty sub-pathvolume
   setEmptyFloatVolume(&subpathvolume, subvolume_height, bigdiffvolume->width,
@@ -777,6 +831,7 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
   setEmptyFloatVolume(&subdiffvolume, subvolume_height, bigdiffvolume->width,
     bigdiffvolume->depth);
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
@@ -786,11 +841,13 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
 
   // TESTING
   gettimeofday(&smallstart, NULL);
+  #endif
 
   // Initialize the empty final path volume
   setEmptyFloatVolume(bigpathvolume, bigdiffvolume->height,
     bigdiffvolume->width, bigdiffvolume->depth);
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
@@ -800,6 +857,7 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
 
   // TESTING
   gettimeofday(&smallstart, NULL);
+  #endif
 
   // Buffer holding the previous y = 0 data of the subvolume
   y0buffer = (float *) malloc(sizeof(float) * subpathvolume.width *
@@ -819,6 +877,7 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
   // Set the very first cell in the final path volume
   *(bigpathvolume->contents + 0) = *(bigdiffvolume->contents + 0);
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
@@ -828,6 +887,7 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
 
   // TESTING
   gettimeofday(&smallstart, NULL);
+  #endif
 
   // Complete x = 0, y = 0
   setX0Y0(bigpathvolume, bigdiffvolume);
@@ -836,16 +896,20 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
   // Complete y = 0
   setY0(bigpathvolume, bigdiffvolume);
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
   stopTimeInMicros = 1000000 * smallstop.tv_sec + smallstop.tv_usec;
   printf("big parallel y = 0 took %llu us\n", stopTimeInMicros -
     startTimeInMicros);
+  #endif
 
   for(i = 0; i < numIterations - 1; i++) {
+    #ifdef dtw_debug
     // TESTING
     gettimeofday(&smallstart, NULL);
+    #endif
 
     // Set the contents of the subvolumes
 
@@ -867,18 +931,22 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
       i, sizeof(float) * subdiffvolume.height * subdiffvolume.width *
       subdiffvolume.depth);
 
+    #ifdef dtw_debug
     // TESTING
     gettimeofday(&smallstop, NULL);
     startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
     stopTimeInMicros = 1000000 * smallstop.tv_sec + smallstop.tv_usec;
     printf("big parallel copies to subvolumes took %llu us\n",
       stopTimeInMicros - startTimeInMicros);
+    #endif
 
     // Complete the path subvolume
     setSmallPathVolumeParallel(&subpathvolume, &subdiffvolume);
 
+    #ifdef dtw_debug
     // TESTING
     gettimeofday(&smallstart, NULL);
+    #endif
 
     // Copy the contents of the path subvolume to the total volume
     memcpy(bigpathvolume->contents + bigpathvolume->width *
@@ -892,12 +960,14 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
       subpathvolume.width * subpathvolume.depth, sizeof(float) *
       subpathvolume.width * subpathvolume.depth);
 
+    #ifdef dtw_debug
     // TESTING
     gettimeofday(&smallstop, NULL);
     startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
     stopTimeInMicros = 1000000 * smallstop.tv_sec + smallstop.tv_usec;
     printf("big parallel copy to big volume and setup took %llu us\n",
       stopTimeInMicros - startTimeInMicros);
+    #endif
   }
 
   // Get the height of the volume of the final iteration
@@ -909,8 +979,10 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
     last_subpathvolume_height = subpathvolume.height;
   }
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstart, NULL);
+  #endif
 
   // This will allow us to index into the large float volume;
   // need to keep track of where the last subvolume will copy into
@@ -924,6 +996,7 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
   setEmptyFloatVolume(&subdiffvolume, last_subpathvolume_height,
     bigdiffvolume->width, bigdiffvolume->depth);
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
@@ -933,6 +1006,7 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
 
   // TESTING
   gettimeofday(&smallstart, NULL);
+  #endif
 
   // Set the contents of the subvolumes
 
@@ -954,18 +1028,22 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
     subdiffvolume.depth * i, sizeof(float) * subdiffvolume.height *
     subdiffvolume.width * subdiffvolume.depth);
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
   stopTimeInMicros = 1000000 * smallstop.tv_sec + smallstop.tv_usec;
   printf("big parallel copies to subvolumes took %llu us\n", stopTimeInMicros -
     startTimeInMicros);
+  #endif
 
   // Complete path subvolume
   setSmallPathVolumeParallel(&subpathvolume, &subdiffvolume);
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstart, NULL);
+  #endif
 
   // Copy the contents of the path subvolume to the total volume
   memcpy(bigpathvolume->contents + bigpathvolume->width *
@@ -982,12 +1060,14 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
   // CUDA Deallocation
   cudaFree(d_sdv);
 
+  #ifdef dtw_debug
   // TESTING
   gettimeofday(&smallstop, NULL);
   startTimeInMicros = 1000000 * smallstart.tv_sec + smallstart.tv_usec;
   stopTimeInMicros = 1000000 * smallstop.tv_sec + smallstop.tv_usec;
   printf("big parallel copy to big volume and deallocation took %llu us\n",
     stopTimeInMicros - startTimeInMicros);
+  #endif
 
   // TESTING
   gettimeofday(&stop, NULL);
@@ -1269,8 +1349,8 @@ int main() {
 
   srand(time(NULL));
 
-  for(i = 253; i < 254; i++) {
-  for(j = 253; j < 254; j++) {
+  for(i = 400; i < 401; i++) {
+  for(j = 400; j < 401; j++) {
 
   printf("(%u, %u)\n", i , j);
 
@@ -1299,7 +1379,7 @@ int main() {
   //printFloatVolume(&dvs);
   //printf("\n");
 
-  setBigDiffVolumeParallel(&dvp, &picture1, &picture2, 200);
+  setBigDiffVolumeParallel(&dvp, &picture1, &picture2, 100);
 
   printf("--- diff volume parallel ---\n");
   //printFloatVolume(&dvp);
@@ -1320,7 +1400,7 @@ int main() {
   //printFloatVolume(&pvs);
   //printf("\n");
 
-  setBigPathVolumeParallel(&pvp, &dvp, 200);
+  setBigPathVolumeParallel(&pvp, &dvp, 11);
 
   printf("--- path volume parallel ---\n");
   //printFloatVolume(&pvp);
