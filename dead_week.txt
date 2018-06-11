@@ -1,0 +1,2 @@
+> rotation of pictures in openGL or even CUDA ???
+
