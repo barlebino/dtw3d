@@ -15,4 +15,11 @@ void setRandomPicture(struct Picture *picture, unsigned width,
 
 void printPicture(struct Picture *picture);
 
+// Temporary turning for demo purposes
+void turnPictureParallel(struct Picture *in, struct Picture *out,
+  double radians);
+
+__global__ void turnPictureKernel(unsigned char *d_in, unsigned char *d_out,
+  unsigned picWidth, unsigned picHeight, double sn, double cs);
+
 #endif

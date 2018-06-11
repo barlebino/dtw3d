@@ -1349,8 +1349,8 @@ int main() {
 
   srand(time(NULL));
 
-  for(i = 400; i < 401; i++) {
-  for(j = 400; j < 401; j++) {
+  for(i = 200; i < 201; i++) {
+  for(j = 200; j < 201; j++) {
 
   printf("(%u, %u)\n", i , j);
 
@@ -1358,10 +1358,10 @@ int main() {
 
   setRandomPicture(&picture1, i, j);
   setRandomPicture(&picture2, i, j);
-  /*lodepng_decode32_file(&picture1.colors, &picture1.width, &picture1.height,
-    "tagpro-red.png");
-  lodepng_decode32_file(&picture2.colors, &picture2.width, &picture2.height,
-    "tagpro-red.png");*/
+  //lodepng_decode32_file(&picture1.colors, &picture1.width, &picture1.height,
+  //  "tagpro-red.png");
+  //lodepng_decode32_file(&picture2.colors, &picture2.width, &picture2.height,
+  //  "tagpro-red.png");
 
   printf("--- picture1 ---\n");
   //printPicture(&picture1);

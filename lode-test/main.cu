@@ -35,8 +35,6 @@ __global__ void turnPictureKernel(unsigned char *d_in, unsigned char *d_out,
   // Get new vector from center of picture to pixel
   endVecX = startVecX * cs - startVecY * sn;
   endVecY = startVecY * cs + startVecX * sn;
-  /*endVecX = startVecX;
-  endVecY = startVecY;*/
 
   // Get new coordinates from the end vector
   rotateX = endVecX + (double) picWidth / 2;
@@ -45,14 +43,6 @@ __global__ void turnPictureKernel(unsigned char *d_in, unsigned char *d_out,
   // Sample one set of coordinates from rotateX
   tempX = (int) floor(rotateX);
   tempY = (int) floor(rotateY);
-
-  // Set base color
-  /*d_out[index * 4 + 0] = 255;
-  d_out[index * 4 + 1] = 255;
-  d_out[index * 4 + 2] = 255;
-  d_out[index * 4 + 3] = 255;
-
-  __syncthreads();*/
 
   // Set the color
   if((tempX >= 0) && (tempX < picWidth) && (tempY >= 0) &&
@@ -136,6 +126,7 @@ int main() {
   lodepng_decode32_file(&(inPic.colors), &(inPic.width), &(inPic.height),
     "anime.png");
 
+  printf("Begin turn\n");
   turnPictureParallel(&inPic, &outPic, 3.14159f / 4.f);
 
   /*lodepng_decode32_file(&out, &w, &h, "anime.png");
