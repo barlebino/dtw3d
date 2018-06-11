@@ -1073,7 +1073,7 @@ void setBigPathVolumeParallel(struct FloatVolume *bigpathvolume,
   gettimeofday(&stop, NULL);
   startTimeInMicros = 1000000 * start.tv_sec + start.tv_usec;
   stopTimeInMicros = 1000000 * stop.tv_sec + stop.tv_usec;
-  printf("GPU took %llu us\n", stopTimeInMicros - startTimeInMicros);
+  //printf("GPU took %llu us\n", stopTimeInMicros - startTimeInMicros);
 }
 
 float vectorLength(float ax, float ay, float az,
@@ -1126,8 +1126,8 @@ float getPathDeviationSerial(struct FloatVolume *pathVolume) {
   unitdiagonal[2] = z;
   normalize(&unitdiagonal[0], &unitdiagonal[1], &unitdiagonal[2]);
 
-  printf("Unit diagonal: [%f, %f, %f]\n", unitdiagonal[0], unitdiagonal[1],
-    unitdiagonal[2]);
+  //printf("Unit diagonal: [%f, %f, %f]\n", unitdiagonal[0], unitdiagonal[1],
+  //  unitdiagonal[2]);
 
   while(!(x == 0 && y == 0 && z == 0)) {
     //printf("Path: [%u, %u, %u]\n", x ,y, z);
@@ -1342,10 +1342,11 @@ void getTestFloatVolume(struct FloatVolume *fv) {
 }
 
 int main() {
-  struct Picture picture1, picture2;
+  struct Picture picture1, picture2, rotate2;
   struct FloatVolume dvs, dvp;
   struct FloatVolume pvs, pvp;
   unsigned i, j, res;
+  double theta;
 
   srand(time(NULL));
 
@@ -1356,20 +1357,39 @@ int main() {
 
   // --- PICTURE CREATION SECTION ---------------------------------------------
 
-  setRandomPicture(&picture1, i, j);
-  setRandomPicture(&picture2, i, j);
+  //setRandomPicture(&picture1, i, j);
+  //setRandomPicture(&picture2, i, j);
   //lodepng_decode32_file(&picture1.colors, &picture1.width, &picture1.height,
   //  "tagpro-red.png");
   //lodepng_decode32_file(&picture2.colors, &picture2.width, &picture2.height,
   //  "tagpro-red.png");
 
-  printf("--- picture1 ---\n");
+  //lodepng_decode32_file(&picture2.colors, &picture2.width, &picture2.height,
+  //  "cross.png");
+
+  lodepng_decode32_file(&picture2.colors, &picture2.width, &picture2.height,
+    "cross2.png");
+
+  //printf("--- picture1 ---\n");
   //printPicture(&picture1);
   //printf("\n");
 
-  printf("--- picture2 ---\n");
+  //printf("--- picture2 ---\n");
   //printPicture(&picture2);
   //printf("\n");
+
+  theta = 0.0;
+  while(theta < 3.14159 * 2) {
+    printf("theta: %f:", theta);
+    turnPictureParallel(&picture2, &rotate2, theta);
+    setBigDiffVolumeParallel(&dvp, &picture2, &rotate2, 100);
+    setBigPathVolumeParallel(&pvp, &dvp, 11);
+    printf("%f\n", getPathDeviationSerial(&pvp));
+    theta = theta + (3.14159 * 2) * 1 / 500;
+    free(rotate2.colors);
+  }
+
+  return;
 
   // --- DIFF VOLUME SECTION --------------------------------------------------
 

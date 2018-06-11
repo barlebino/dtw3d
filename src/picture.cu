@@ -90,7 +90,7 @@ __global__ void turnPictureKernel(unsigned char *d_in, unsigned char *d_out,
     d_out[index * 4 + 0] = 0;
     d_out[index * 4 + 1] = 0;
     d_out[index * 4 + 2] = 0;
-    d_out[index * 4 + 3] = 0;
+    d_out[index * 4 + 3] = 255;
   }
 }
 
