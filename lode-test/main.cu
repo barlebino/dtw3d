@@ -1,49 +1,14 @@
 #include <stdio.h>
+#include <math.h>
 
-#include "picture.h"
+#include "lodepng.h"
 
-// Sets the picture at location "picture" into a random picture of dimensions
-// width and height
-void setRandomPicture(struct Picture *picture, unsigned width,
-  unsigned height) {
-  unsigned i, j;
-  unsigned char *currentColor;
-
-  picture->width = width;
-  picture->height = height;
-
-  picture->colors = (unsigned char *) malloc(sizeof(unsigned char) *
-    picture->width * picture->height * 4);
-
-  for(i = 0; i < height; i++) {
-    for(j = 0; j < width; j++) {
-      currentColor = picture->colors + (i * width + j) * 4;
-
-      *(currentColor + 0) = (unsigned char) (rand() % 256);
-      *(currentColor + 1) = (unsigned char) (rand() % 256);
-      *(currentColor + 2) = (unsigned char) (rand() % 256);
-      *(currentColor + 3) = (unsigned char) (rand() % 256);
-    }
-  }
-}
-
-void printPicture(struct Picture *picture) {
-  unsigned i, j;
-  unsigned char *currentColor;
-
-  for(i = 0; i < picture->height; i++) {
-    for(j = 0; j < picture->width; j++) {
-      currentColor = picture->colors + (i * picture->width + j) * 4;
-
-      printf("(%u, %u): [%u, %u, %u, %u]\n", i, j,
-        (unsigned) *(currentColor + 0),
-        (unsigned) *(currentColor + 1),
-        (unsigned) *(currentColor + 2),
-        (unsigned) *(currentColor + 3)
-      );
-    }
-  }
-}
+// Color at index 0 is top left, at index 0 is top left + 1 to the right
+// All colors are in [0, 255]
+struct Picture {
+  unsigned width, height;
+  unsigned char *colors;
+};
 
 __global__ void turnPictureKernel(unsigned char *d_in, unsigned char *d_out,
   unsigned picWidth, unsigned picHeight, double sn, double cs) {
@@ -90,7 +55,7 @@ __global__ void turnPictureKernel(unsigned char *d_in, unsigned char *d_out,
     d_out[index * 4 + 0] = 0;
     d_out[index * 4 + 1] = 0;
     d_out[index * 4 + 2] = 0;
-    d_out[index * 4 + 3] = 255;
+    d_out[index * 4 + 3] = 0;
   }
 }
 
@@ -145,4 +110,43 @@ void turnPictureParallel(struct Picture *in, struct Picture *out,
   // Clear memory
   cudaFree(d_in);
   cudaFree(d_out);
+}
+
+int main() {
+  struct Picture outPic, inPic;
+
+  // Output of reading file
+  unsigned char *out, *in;
+  unsigned w, h;
+
+  // Temporary variables
+  unsigned i, j;
+  unsigned pixelIndex;
+
+  lodepng_decode32_file(&(inPic.colors), &(inPic.width), &(inPic.height),
+    "anime.png");
+
+  printf("Begin turn\n");
+  turnPictureParallel(&inPic, &outPic, 3.14159f / 4.f);
+
+  /*lodepng_decode32_file(&out, &w, &h, "anime.png");
+
+  printf("(w, h): (%u, %u)\n", w, h);
+
+  for(i = 0; i < h; i++) {
+    for(j = 0; j < w; j++) {
+      pixelIndex = (i * w + j) * 4; // 4 for RGBA
+
+      *(out + pixelIndex + 0) = 255 - *(out + pixelIndex + 0);
+      *(out + pixelIndex + 1) = 255 - *(out + pixelIndex + 1);
+      *(out + pixelIndex + 2) = 255 - *(out + pixelIndex + 2);
+    }
+  }*/
+
+  //lodepng_encode32_file("greenery.png", inPic.colors, inPic.width,
+  //  inPic.height);
+  lodepng_encode32_file("greenery.png", outPic.colors, outPic.width,
+    outPic.height);
+
+  // lodepng_encode32_file("anime-inverse.png", out, w, h);
 }

@@ -15,12 +15,12 @@ unsigned toIndex3D(unsigned a, unsigned b, unsigned blen, unsigned c,
 }
 
 // Given two colors, determine differentce
-float diffColor(float *c1, float *c2) {
+float diffColor(unsigned char *c1, unsigned char *c2) {
   return sqrtf(
-    powf(*(c1 + 0) - *(c2 + 0), 2.f) +
-    powf(*(c1 + 1) - *(c2 + 1), 2.f) +
-    powf(*(c1 + 2) - *(c2 + 2), 2.f) +
-    powf(*(c1 + 3) - *(c2 + 3), 2.f)
+    powf((float) *(c1 + 0) - (float) *(c2 + 0), 2.f) +
+    powf((float) *(c1 + 1) - (float) *(c2 + 1), 2.f) +
+    powf((float) *(c1 + 2) - (float) *(c2 + 2), 2.f) +
+    powf((float) *(c1 + 3) - (float) *(c2 + 3), 2.f)
   );
 }
 
@@ -38,8 +38,8 @@ int compareFloatVolumes(struct FloatVolume *fv1, struct FloatVolume *fv2) {
 
   // Compare the contents
   for(i = 0; i < fv1->width * fv1->height * fv1->depth; i++) {
-    if(abs(*(fv1->contents + i) - *(fv2->contents + i)) > .01f) {
-      printf("Contents don't match: abs(%f - %f) > .01f\n",
+    if(abs(*(fv1->contents + i) - *(fv2->contents + i)) > .1f) {
+      printf("Contents don't match: abs(%f - %f) > .1f\n",
         *(fv1->contents + i), *(fv2->contents + i));
       return 1;
     }
